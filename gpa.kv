@@ -1,0 +1,80 @@
+<GPAWidget>:
+    orientation: "vertical"
+    spacing: "10dp"
+
+    MDTopAppBar:
+        title: "GPA Forecaster"
+
+    MDBoxLayout:
+        orientation: "horizontal"
+        size_hint_y: None
+        height: "60dp"
+        padding: "10dp"
+        spacing: "10dp"
+
+        MDLabel:
+            text: "Degree Length:"
+            size_hint_x: 0.4
+            halign: "left"
+
+        MDDropDownItem:
+            id: year_dropdown
+            text: "Select Years"
+            on_release: app.menu.open()
+
+    ScrollView:
+        MDBoxLayout:
+            id: year_container
+            orientation: "vertical"
+            spacing: "30dp"
+            padding: "20dp"
+            adaptive_height: True
+            size_hint_y: None
+
+    MDRectangleFlatButton:
+        text: "Calculate GPA"
+        size_hint: None, None
+        size: "200dp", "48dp"
+        pos_hint: {"center_x": 0.5}
+        on_release: app.calculate_gpa()
+
+    MDGridLayout:
+        id: gpa_output_box
+        cols: 3 # Start with 3 columns
+        adaptive_height: True
+        size_hint_x: 1
+        size_hint_y: None
+        spacing: "10dp"
+        padding: "20dp"
+        pos_hint: {"center_x": 0.5}
+        width: self.minimum_width
+
+        MDLabel:
+            id: wam_label
+            halign: "center"
+            text: "Predicted WAM: -- --"
+            theme_text_color: "Primary"
+            height: self.texture_size[1]
+            size_hint_y: None
+            text_size: self.width, None
+            font_style: "H6"
+
+        MDLabel:
+            id: gpa4_label
+            halign: "center"
+            text: "GPA (4-point scale): --"
+            theme_text_color: "Primary"
+            height: self.texture_size[1]
+            size_hint_y: None
+            text_size: self.width, None
+            font_style: "H6"
+
+        MDLabel:
+            id: gpa7_label
+            halign: "center"
+            text: "GPA (7-point scale): --"
+            theme_text_color: "Primary"
+            height: self.texture_size[1]
+            size_hint_y: None
+            text_size: self.width, None
+            font_style: "H6"
