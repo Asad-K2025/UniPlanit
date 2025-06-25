@@ -18,63 +18,68 @@
             halign: "left"
 
         MDDropDownItem:
-            id: year_dropdown
-            text: "Select Years"
+            id: semester_dropdown
+            text: "Select"
             on_release: app.menu.open()
 
     ScrollView:
         MDBoxLayout:
             id: scroll_container
             orientation: "vertical"
-            spacing: "30dp"  # Creates space between sections for each year
+            spacing: "30dp"  # Creates space between sections for each semester
             padding: "20dp"  # Space around the edges of the entire scroll container
             adaptive_height: True
             size_hint_y: None
 
     MDRectangleFlatButton:
-        text: "Calculate GPA"
+        text: "Calculate Marks"
         size_hint: None, None
         size: "200dp", "48dp"
         pos_hint: {"center_x": 0.5}
-        on_release: app.calculate_gpa()
+        on_release: app.display_marks_to_interface()
 
     MDGridLayout:
-        id: gpa_output_box
+        id: degree_marks_output_box
         cols: 3 # Start with 3 columns
         adaptive_height: True
-        size_hint_x: 1
-        size_hint_y: None
         spacing: "10dp"
         padding: "20dp"
-        pos_hint: {"center_x": 0.5}
-        width: self.minimum_width
+        cols_default_height: "10dp"
 
         MDLabel:
             id: wam_label
-            halign: "center"
-            text: "Predicted WAM: -- --"
-            theme_text_color: "Primary"
-            height: self.texture_size[1]
-            size_hint_y: None
-            text_size: self.width, None
+            text: "WAM: -- --"
             font_style: "H6"
+            halign: "center"
+            theme_text_color: "Primary"
+            markup: True
+            size_hint: (1, None)
+            height: self.texture_size[1] + dp(8)
+            text_size: self.width, None
+            shorten: False
 
         MDLabel:
             id: gpa4_label
             halign: "center"
             text: "GPA (4-point scale): --"
             theme_text_color: "Primary"
-            height: self.texture_size[1]
-            size_hint_y: None
-            text_size: self.width, None
             font_style: "H6"
+            size_hint_x: 1
+            size_hint_y: None
+            height: dp(32)  # fixed height for consistent layout
+            text_size: self.size  # allows text to fill the entire cell and wrap properly if needed
+            shorten: False
+            markup: True
 
         MDLabel:
             id: gpa7_label
             halign: "center"
             text: "GPA (7-point scale): --"
             theme_text_color: "Primary"
-            height: self.texture_size[1]
-            size_hint_y: None
-            text_size: self.width, None
             font_style: "H6"
+            size_hint_x: 1
+            size_hint_y: None
+            height: dp(32)  # fixed height for consistent layout
+            text_size: self.size  # allows text to fill the entire cell and wrap properly if needed
+            shorten: False
+            markup: True
