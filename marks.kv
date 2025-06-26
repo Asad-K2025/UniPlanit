@@ -43,43 +43,32 @@
         cols: 3 # Start with 3 columns
         adaptive_height: True
         spacing: "10dp"
-        padding: "20dp"
+        padding: [20, 0, 20, 20]  # [left, top, right, bottom]
         cols_default_height: "10dp"
 
         MDLabel:
             id: wam_label
             text: "WAM: -- --"
-            font_style: "H6"
+            font_size: root.degree_marks_text_font_size
             halign: "center"
-            theme_text_color: "Primary"
-            markup: True
-            size_hint: (1, None)
-            height: self.texture_size[1] + dp(8)
-            text_size: self.width, None
-            shorten: False
+            size_hint_y: None
+            height: self.texture_size[1]
+            bold: True
 
         MDLabel:
             id: gpa4_label
             halign: "center"
             text: "GPA (4-point scale): --"
-            theme_text_color: "Primary"
-            font_style: "H6"
-            size_hint_x: 1
+            font_size: root.degree_marks_text_font_size
+            height: self.texture_size[1]
             size_hint_y: None
-            height: dp(32)  # fixed height for consistent layout
-            text_size: self.size  # allows text to fill the entire cell and wrap properly if needed
-            shorten: False
-            markup: True
+            bold: True
 
         MDLabel:
             id: gpa7_label
             halign: "center"
             text: "GPA (7-point scale): --"
-            theme_text_color: "Primary"
-            font_style: "H6"
-            size_hint_x: 1
+            font_size: root.degree_marks_text_font_size
             size_hint_y: None
-            height: dp(32)  # fixed height for consistent layout
-            text_size: self.size  # allows text to fill the entire cell and wrap properly if needed
-            shorten: False
-            markup: True
+            height: self.texture_size[1]
+            bold: True
