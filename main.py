@@ -275,7 +275,7 @@ class MarksApp(MDApp):  # Class used to define backend logic
 
                     sem_weight += mark * credit
                     sem_credits += credit
-                except:  # try except used in case of invalid empty values for a subject (subject is ignored)
+                except ValueError:  # try except used in case of invalid empty values for a subject (subject is ignored)
                     continue
             # Section for calculating and adding semester marks to UI
             sem_wam, sem_grade, sem_gpa4, sem_gpa7 = calculate_marks(sem_credits, sem_weight)
