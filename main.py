@@ -19,10 +19,12 @@ class MarksApp(MDApp):  # Class used to define backend logic
     def __init__(self):
         super().__init__()
         self.is_small_view = False  # Used to adjust mobile view
-        self.subjects_marks_dictionary = {}  # Dictionary used to store subject, mark and credit values
+        self.subjects_marks_dictionary = {}  # Dictionary used to store subject, mark and credit values for calculating gpa and wam
         self.semester_labels_dictionary = {}  # Store labels to access them and change their values
-        self.semester_marks_sections_dictionary = {}  # Stores sections were semester marks are displayed
-        self.subject_input_rows_array = []  # Each item will be a dict with row (subject_field, mark_field, etc)
+        self.semester_marks_sections_dictionary = {}  # Stores sections where semester marks are displayed
+        self.subject_input_rows_array = []  # Each row will be a dict with fields such as (subject_field, mark_field, parent, container, etc.) used for formatting interface between mobile and desktop
+        self.focusable_fields_grid = []  # Stores textboxes in order to be movable with keyboard button presses
+        self.rows_count_dictionary = {}  # Used to store how many widgets there are for each semester
         self.menu = None  # Used to initially define the menu widget for dropdown
 
     def build(self):  # Function defines main properties of app
@@ -31,6 +33,7 @@ class MarksApp(MDApp):  # Class used to define backend logic
         self.root = WidgetsUI()  # Passing widgets class as UI of this app (this allows easier referencing of widgets)
         self.init_dropdown_menu()
         Window.bind(on_resize=self.on_window_resize)  # Call function every time window resizes
+        Window.bind(on_key_down=self._on_key_down)  # Define behaviour when certain keys are pressed
         self.on_window_resize(Window, Window.width, Window.height)  # Call once to initially set according to screen size
         return self.root
 
@@ -56,8 +59,79 @@ class MarksApp(MDApp):  # Class used to define backend logic
 
         self.refresh_subject_row_layouts()  # Refresh subject rows layout
 
+    def _on_key_down(self, _window, key, _scancode, _codepoint, modifiers):  # Define behaviour for using tab and arrow keys to move across textboxes
+        # Find focused field
+        field_found = False  # Flag to check if focused field ahs been found
+        row, col = 0, 0  # Incase these values are not assigned during loop for any reason
+        for row_index, fields_row in enumerate(self.focusable_fields_grid):  # Loop over every row
+            for col_index, field in enumerate(fields_row):  # Loop over every field in the row
+                if field.focus:  # If field has cursor then store its position
+                    field_found = True
+                    row = row_index
+                    col = col_index
+                    break
+            if field_found:  # If field found, do not loop over other rows
+                break
+
+        if not field_found:
+            return False  # No focused field found, hence perform no actions
+        else:
+            current_field = self.focusable_fields_grid[row][col]
+            flat_list = [item for row in self.focusable_fields_grid for item in row]  # Merged version of list of lists
+            flat_index = flat_list.index(current_field)
+            cursor_position = current_field.cursor_index()  # Used so arrow keys can still traverse a word in textbox
+            text_len = len(current_field.text)
+
+        if key == 9 and "shift" not in modifiers:  # Tab
+            next_field = flat_list[(flat_index + 1) % len(flat_list)]  # Head to index 0 if it reaches end of array
+            current_field.focus = False
+            next_field.focus = True
+            return True
+
+        if key == 9 and "shift" in modifiers:  # Shift + Tab
+            prev_field = flat_list[(flat_index - 1) % len(flat_list)]  # Head to last index if it reaches start of array
+            current_field.focus = False
+            prev_field.focus = True
+            return True
+
+        if key == 276 and cursor_position == 0:  # Left
+            current_field.focus = False
+            prev_field = self.focusable_fields_grid[row][col - 1]
+            prev_field.focus = True
+            text_field_end_index = len(prev_field.text or "")
+            Clock.schedule_once(lambda dt: setattr(prev_field, 'cursor', (text_field_end_index, 0)), 0)
+            return True
+
+        if key == 275 and cursor_position == text_len:  # Right
+            current_field.focus = False
+            if col == 2:
+                next_field = self.focusable_fields_grid[row][0]
+            else:
+                next_field = self.focusable_fields_grid[row][col + 1]
+            next_field.focus = True
+            Clock.schedule_once(lambda dt: setattr(next_field, 'cursor', (0, 0)), 0)
+            return True
+
+        if key == 273:  # Up
+            current_field.focus = False
+            if row > 0:
+                self.focusable_fields_grid[row - 1][col].focus = True  # If not first row, go up
+            else:
+                self.focusable_fields_grid[-1][col].focus = True  # If first row, move to bottom row
+            return True
+
+        if key == 274:  # Down
+            current_field.focus = False
+            if row < len(self.focusable_fields_grid) - 1:
+                self.focusable_fields_grid[row + 1][col].focus = True
+            else:
+                self.focusable_fields_grid[0][col].focus = True
+            return True
+
+        return False  # otherwise let default behavior happen such as text editing
+
     def init_dropdown_menu(self):  # Function creates the menu for the dropdown for selecting semesters with its options
-        options = [str(i) for i in range(1, 8 + 1)]  # Add option 1 to 8 in dropdown menu
+        options = [str(i) for i in range(1, 14 + 1)]  # Add option 1 to 14 in dropdown menu
         items = [{"text": opt, "viewclass": "OneLineListItem", "on_release": lambda x=opt: self.display_main_section(x)} for opt in options]
         self.menu = MDDropdownMenu(caller=self.root.ids.semester_dropdown, items=items)  # Add menu to dropdown
 
@@ -66,12 +140,14 @@ class MarksApp(MDApp):  # Class used to define backend logic
         self.menu.dismiss()  # Close the menu after number was selected
         self.root.ids.scroll_container.clear_widgets()  # Empty out scroll container in case of previous selection
         self.subjects_marks_dictionary.clear()  # Clear dictionary as widgets have been reset after semester selection
+        self.focusable_fields_grid.clear()   # Clear array as entry widget rows have been reset after semester selection
 
         for semester in range(1, int(semesters_in_degree) + 1):
             section_for_semester = MDBoxLayout(orientation="vertical", spacing=dp(10), size_hint_y=None)
             section_for_semester.bind(minimum_height=section_for_semester.setter("height"))  # Set height of this layout to its contents height
 
-            semester_label = f"Semester {semester}"  # Labels for semester 1 to Last semester
+            year = int((semester + 1) / 2)  # Calculate Year for the semester
+            semester_label = f"Semester {semester} (Year {year})"  # Labels for semester 1 to Last semester
             section_for_semester.add_widget(MDLabel(text=semester_label, font_style="H6", theme_text_color="Primary"))
             section_for_semester.add_widget(MDLabel(height=dp(1)))  # Add gap between semester title and widgets
 
@@ -152,6 +228,23 @@ class MarksApp(MDApp):  # Class used to define backend logic
                                    width=dp(70),
                                    text_color_normal=black,
                                    text_color_focus=black)  # 3 textboxes for input
+
+        for field in (subject_field, mark_field, credit_field):  # Append the 3 textboxes to array to track them for allowing tab and arrow keys over textboxes
+            field.multiline = False  # Ensure tab doesnt insert a tab character
+
+        if semester_label in self.rows_count_dictionary.keys():  # Track widgets in row_count dictionary
+            self.rows_count_dictionary[semester_label] += 1
+        else:
+            self.rows_count_dictionary[semester_label] = 1
+
+        # Insert the widget in the array at appropriate point based on which semester it belongs to
+        widget_index = 0
+        for key, value in self.rows_count_dictionary.items():
+            widget_index += value  # Store how many widgets are present before the new added widget
+            if key == semester_label:
+                break  # If the semester which the widget belongs to is reached, stop increasing the widget_index value
+        self.focusable_fields_grid.insert(widget_index - 1, [subject_field, mark_field, credit_field])
+
         bin_btn = MDIconButton(icon="trash-can", theme_text_color="Custom", text_color=(1, 0, 0, 1))
 
         row_container = self.build_subject_row_layout(subject_field, mark_field, credit_field, bin_btn)  # Pass widgets to store in layout
@@ -227,10 +320,26 @@ class MarksApp(MDApp):  # Class used to define backend logic
         # Clock used to ensure this executes after the widget has been added
 
     def remove_subject_row(self, semester_label, row, section):  # Functionality of red bin button
-        if row in self.subjects_marks_dictionary[semester_label]:
+
+        subject = row.children[3]
+        mark = row.children[2]
+        credit = row.children[1]
+        for fields_row in self.focusable_fields_grid:  # Remove widgets from fields_grid_array to ensure correct navigation with arrow keys
+            if subject in fields_row and mark in fields_row and credit in fields_row:
+                self.focusable_fields_grid.remove(fields_row)
+                break
+
+        if row in self.subjects_marks_dictionary[semester_label]:  # Remove from dictionary for calculating GPA
             self.subjects_marks_dictionary[semester_label].remove(row)
-            section.remove_widget(row)
-            Clock.schedule_once(lambda dt: section.do_layout())
+            section.remove_widget(row)  # Remove widget form interface
+            Clock.schedule_once(lambda dt: section.do_layout())  # Restructure the interface after ensuring widget is removed with a delay
+
+        self.subject_input_rows_array = [  # Remove the rows dictionary from the input row tracking array containing layout information
+            row_dictionary for row_dictionary in self.subject_input_rows_array if row_dictionary["container"] != row
+        ]
+
+        if semester_label in self.rows_count_dictionary:
+            self.rows_count_dictionary[semester_label] -= 1  # Decrement count of widgets in the semester
 
     def display_marks_to_interface(self):  # Function adds calculated WAMs and GPAs for degree and semesters to interface
 
