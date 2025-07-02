@@ -9,10 +9,13 @@ from kivy.metrics import dp
 from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.properties import StringProperty
+import json
+import os
 
 
 class WidgetsUI(MDBoxLayout):  # Class needed to define the user interface, cannot be created in kv as app requires backend python
     degree_marks_text_font_size = StringProperty("18sp")
+    degree_marks_title_font_size = StringProperty("22sp")
 
 
 class MarksApp(MDApp):  # Class used to define backend logic
@@ -37,25 +40,77 @@ class MarksApp(MDApp):  # Class used to define backend logic
         self.on_window_resize(Window, Window.width, Window.height)  # Call once to initially set according to screen size
         return self.root
 
+    def on_start(self):
+        self.load_data()  # Load in pre-entered values by user. On start used as running this in build is too early and slow
+
+    def save_data(self):  # Function saves the entered data to a json file in Users/AppData/Roaming/marks
+        data = {
+            "num_semesters": len(self.subjects_marks_dictionary),
+            "semesters": {}
+        }
+
+        for semester, rows in self.subjects_marks_dictionary.items():  # Retrieve all entered data
+            data["semesters"][semester] = []
+            for row in rows:
+                subject = row.children[3].text
+                mark = row.children[2].text
+                credit = row.children[1].text
+                data["semesters"][semester].append({
+                    "subject": subject,
+                    "mark": mark,
+                    "credit": credit
+                })
+
+        save_path = os.path.join(self.user_data_dir, "saved_state.json")  # Compatible file path for all platforms
+        try:
+            os.makedirs(self.user_data_dir, exist_ok=True)
+            with open(save_path, "w") as f:
+                json.dump(data, f, indent=2)  # Indent used for readability of json
+        except Exception as e:
+            print(f"Failed to save data: {e}")  # Used in event of any errors, then they will be printed
+
+    def load_data(self):  # Function runs to load all data saved in json
+        try:
+            save_path = os.path.join(self.user_data_dir, "saved_state.json")
+            if not os.path.exists(save_path):
+                return  # If first time launch, json does nto exist, so end execution
+
+            with open(save_path, "r") as f:
+                data = json.load(f)  # Retrieve data from json
+
+            semesters = data.get("semesters", {})
+            for semester_label, subjects in semesters.items():
+                section = self.recreate_semester_section(semester_label, subjects)  # Reload all widgets back using helper function
+                self.root.ids.scroll_container.add_widget(section)
+
+            self.display_marks_to_interface()  # Have calculated wam and gpa on interface when app loads in
+
+            if self.menu:
+                self.root.ids.semester_dropdown.text = f"{len(semesters)}"  # Load in selected value form dropdown when app loads
+
+        except Exception as e:  # In case of an error
+            print(f"Error loading saved data: {e}")
+
     def on_window_resize(self, _1, width, _2):  # Adapt marks output box according to screen size (_1 and _2 not used)
         self.is_small_view = (width < 700)  # If small view, track flag as true to make UI changes to input boxes
 
         if width < 600:
             cols = 1
-            font_size = "16sp"
+            font_size = 16
         elif width < 900:
             cols = 2
-            font_size = "18sp"
+            font_size = 18
         else:
             cols = 3
-            font_size = "20sp"
+            font_size = 20
 
         self.root.ids.degree_marks_output_box.cols = cols  # Setting columns of marks output box to adapt to screen sizes
 
         for semester in self.semester_marks_sections_dictionary.values():  # Setting cols of semester mark output boxes
             semester.cols = cols
 
-        self.root.degree_marks_text_font_size = font_size  # Change font size at bottom of screen based on screen size
+        self.root.degree_marks_text_font_size = f'{font_size}sp'  # Change font size at bottom of screen based on screen size
+        self.root.degree_marks_title_font_size = f'{font_size + 4}sp'  # Change font size at bottom of screen based on screen size
 
         self.refresh_subject_row_layouts()  # Refresh subject rows layout
 
@@ -130,6 +185,13 @@ class MarksApp(MDApp):  # Class used to define backend logic
 
         return False  # otherwise let default behavior happen such as text editing
 
+    def auto_update(self, *args):  # Calculates marks automatically whenever something is typed
+        self.display_marks_to_interface()
+        self.save_data()
+
+        for _ in args:  # Args used as function is passed extra 3 parameters by kivy which are not needed
+            pass
+
     def init_dropdown_menu(self):  # Function creates the menu for the dropdown for selecting semesters with its options
         options = [str(i) for i in range(1, 14 + 1)]  # Add option 1 to 14 in dropdown menu
         items = [{"text": opt, "viewclass": "OneLineListItem", "on_release": lambda x=opt: self.display_main_section(x)} for opt in options]
@@ -182,11 +244,11 @@ class MarksApp(MDApp):  # Class used to define backend logic
                                                     theme_text_color="Primary",
                                                     markup="True"))
             # Create semester summary labels
-            wam_sem_label = MDLabel(text="[b]WAM: -- --[/b]", markup=True,
+            wam_sem_label = MDLabel(text="[b]WAM: 0.0 F[/b]", markup=True,
                                     height=dp(10), size_hint_y=None, text_size=(None, None))
-            gpa4_sem_label = MDLabel(text="[b]GPA (4-point scale): --[/b]", markup=True,
+            gpa4_sem_label = MDLabel(text="[b]GPA (4-point scale): 0.0[/b]", markup=True,
                                      height=dp(10), size_hint_y=None, text_size=(None, None))
-            gpa7_sem_label = MDLabel(text="[b]GPA (7-point scale): --[/b]", markup=True,
+            gpa7_sem_label = MDLabel(text="[b]GPA (7-point scale): 0.0[/b]", markup=True,
                                      height=dp(10), size_hint_y=None, text_size=(None, None))
 
             # Add them to the layout
@@ -228,6 +290,10 @@ class MarksApp(MDApp):  # Class used to define backend logic
                                    width=dp(70),
                                    text_color_normal=black,
                                    text_color_focus=black)  # 3 textboxes for input
+
+        subject_field.fbind("text", self.auto_update)
+        mark_field.fbind("text", self.auto_update)
+        credit_field.fbind("text", self.auto_update)
 
         for field in (subject_field, mark_field, credit_field):  # Append the 3 textboxes to array to track them for allowing tab and arrow keys over textboxes
             field.multiline = False  # Ensure tab doesnt insert a tab character
@@ -319,6 +385,8 @@ class MarksApp(MDApp):  # Class used to define backend logic
         Clock.schedule_once(lambda dt: current_section.do_layout())  # Reformat the current section with new widget
         # Clock used to ensure this executes after the widget has been added
 
+        self.auto_update()  # As a row was added, save this in json file
+
     def remove_subject_row(self, semester_label, row, section):  # Functionality of red bin button
 
         subject = row.children[3]
@@ -340,6 +408,8 @@ class MarksApp(MDApp):  # Class used to define backend logic
 
         if semester_label in self.rows_count_dictionary:
             self.rows_count_dictionary[semester_label] -= 1  # Decrement count of widgets in the semester
+
+        self.auto_update()  # Recalculate marks as a row was deleted, and save in the json file
 
     def display_marks_to_interface(self):  # Function adds calculated WAMs and GPAs for degree and semesters to interface
 
@@ -384,7 +454,8 @@ class MarksApp(MDApp):  # Class used to define backend logic
 
                     sem_weight += mark * credit
                     sem_credits += credit
-                except ValueError:  # try except used in case of invalid empty values for a subject (subject is ignored)
+                except Exception as e:  # try except used in case of invalid empty values for a subject (subject is ignored)
+                    print(f'Failed to calculate marks: {e}')
                     continue
             # Section for calculating and adding semester marks to UI
             sem_wam, sem_grade, sem_gpa4, sem_gpa7 = calculate_marks(sem_credits, sem_weight)
@@ -398,6 +469,109 @@ class MarksApp(MDApp):  # Class used to define backend logic
         self.root.ids.wam_label.text = f"WAM: {degree_wam} {degree_grade}"
         self.root.ids.gpa4_label.text = f"GPA (4-point scale): {degree_gpa4}"
         self.root.ids.gpa7_label.text = f"GPA (7-point scale): {degree_gpa7}"
+
+    def recreate_semester_section(self, semester_label, subjects):  # Function recreates interface with saved data
+        section = MDBoxLayout(orientation="vertical", spacing=dp(10), size_hint_y=None)
+        section.bind(minimum_height=section.setter("height"))
+
+        # Add semester title
+        section.add_widget(MDLabel(text=semester_label, font_style="H6", theme_text_color="Primary"))
+        section.add_widget(MDLabel(height=dp(1)))  # Spacer
+
+        rows = []
+        for subject in subjects:
+            # Create and prefill text fields
+            subject_field = MDTextField(
+                hint_text="Subject",
+                text=subject.get("subject", ""),  # Fill textboxes with values loaded from json file
+                size_hint_x=0.6,
+                mode="rectangle",
+                text_color_normal=(0, 0, 0, 1),
+                text_color_focus=(0, 0, 0, 1)
+            )
+
+            mark_field = MDTextField(
+                hint_text="Mark",
+                text=subject.get("mark", ""),
+                input_filter="float",
+                size_hint_x=None,
+                width=dp(70),
+                mode="rectangle",
+                text_color_normal=(0, 0, 0, 1),
+                text_color_focus=(0, 0, 0, 1)
+            )
+
+            credit_field = MDTextField(
+                hint_text="Credit",
+                text=subject.get("credit", "6"),
+                input_filter="int",
+                size_hint_x=None,
+                width=dp(70),
+                mode="rectangle",
+                text_color_normal=(0, 0, 0, 1),
+                text_color_focus=(0, 0, 0, 1)
+            )
+
+            # Style and logic bindings
+            for field in (subject_field, mark_field, credit_field):
+                field.multiline = False
+                field.fbind("text", self.auto_update)
+
+            # Add to grid for keyboard navigation
+            self.focusable_fields_grid.append([subject_field, mark_field, credit_field])
+
+            bin_btn = MDIconButton(icon="trash-can", theme_text_color="Custom", text_color=(1, 0, 0, 1))
+            row_container = self.build_subject_row_layout(subject_field, mark_field, credit_field, bin_btn)
+            bin_btn.bind(on_release=lambda _, r=row_container: self.remove_subject_row(semester_label, r, section))
+
+            rows.append(row_container)
+            section.add_widget(row_container)
+
+            self.subject_input_rows_array.append({
+                "container": row_container,
+                "parent": section,
+                "semester_label": semester_label,
+                "subject": subject_field,
+                "mark": mark_field,
+                "credit": credit_field,
+                "bin": bin_btn
+            })
+
+        # Save to dict for recalculation
+        self.subjects_marks_dictionary[semester_label] = rows
+
+        # Add "+" button
+        add_btn = MDIconButton(
+            icon="plus",
+            theme_text_color="Custom",
+            text_color=self.theme_cls.primary_color,
+            on_release=lambda _, sl=semester_label, sec=section: self.add_subject_row(sl, sec)
+        )
+        section.add_widget(add_btn)
+
+        # Add summary section (WAM, GPA labels)
+        section.add_widget(MDLabel(height=dp(1)))
+        section.add_widget(MDLabel(text="[b]Semester marks summary:[/b]", theme_text_color="Primary", markup=True))
+
+        marks_section = MDGridLayout(cols=3, size_hint_x=1, size_hint_y=None, adaptive_height=True, spacing=dp(10),
+                                     padding=dp(10))
+        wam_label = MDLabel(text="[b]WAM: 0.0 F[/b]", markup=True, height=dp(10), size_hint_y=None)
+        gpa4_label = MDLabel(text="[b]GPA (4-point scale): 0.0[/b]", markup=True, height=dp(10), size_hint_y=None)
+        gpa7_label = MDLabel(text="[b]GPA (7-point scale): 0.0[/b]", markup=True, height=dp(10), size_hint_y=None)
+
+        marks_section.add_widget(wam_label)
+        marks_section.add_widget(gpa4_label)
+        marks_section.add_widget(gpa7_label)
+
+        section.add_widget(marks_section)
+        self.semester_labels_dictionary[semester_label] = {
+            "wam": wam_label,
+            "gpa4": gpa4_label,
+            "gpa7": gpa7_label
+        }
+        self.semester_marks_sections_dictionary[semester_label] = marks_section
+
+        return section
 
 
 MarksApp().run()  # Main execution of class
