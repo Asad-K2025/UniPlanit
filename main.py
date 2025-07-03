@@ -46,58 +46,6 @@ class MarksApp(MDApp):  # Class used to define backend logic
     def on_start(self):
         self.load_data()  # Load in pre-entered values by user. On start used as running this in build is too early and slow
 
-    def save_data(self):  # Function saves the entered data to a json file in Users/AppData/Roaming/marks
-        data = {
-            "num_semesters": len(self.subjects_marks_dictionary),
-            "semesters": {}
-        }
-
-        for row in self.subject_input_rows_array:  # Retrieve all entered data
-            semester = row["semester_label"]
-            if semester not in data["semesters"]:
-                data["semesters"][semester] = []
-
-            subject = row["subject"].text.strip()
-            mark = row["mark"].text.strip()
-            credit = row["credit"].text.strip()
-
-            data["semesters"][semester].append({
-                "subject": subject,
-                "mark": mark,
-                "credit": credit
-            })
-
-        save_path = os.path.join(self.user_data_dir, "saved_state.json")  # Compatible file path for all platforms
-        try:
-            os.makedirs(self.user_data_dir, exist_ok=True)
-            with open(save_path, "w") as f:
-                json.dump(data, f, indent=2)  # Indent used for readability of json
-        except Exception as e:
-            print(f"Failed to save data: {e}")  # Used in event of any errors, then they will be printed
-
-    def load_data(self):  # Function runs to load all data saved in json
-        try:
-            save_path = os.path.join(self.user_data_dir, "saved_state.json")
-            if not os.path.exists(save_path):
-                return  # If first time launch, json does nto exist, so end execution
-
-            with open(save_path, "r") as f:
-                data = json.load(f)  # Retrieve data from json
-
-            semesters = data.get("semesters", {})
-            for semester_label, subjects in semesters.items():
-                section = self.recreate_semester_section(semester_label,
-                                                         subjects)  # Reload all widgets back using helper function
-                self.root.ids.scroll_container.add_widget(section)
-
-            self.display_marks_to_interface()  # Have calculated wam and gpa on interface when app loads in
-
-            if self.menu:
-                self.root.ids.semester_dropdown.text = f"{len(semesters)}"  # Load in selected value form dropdown when app loads
-
-        except Exception as e:  # In case of an error
-            print(f"Error loading saved data: {e}")
-
     def on_window_resize(self, _1, width, _2):  # Adapt marks output box according to screen size (_1 and _2 not used)
         self.is_small_view = (width < 700)  # If small view, track flag as true to make UI changes to input boxes
         if width < 600:
@@ -201,7 +149,59 @@ class MarksApp(MDApp):  # Class used to define backend logic
 
         return False  # otherwise let default behavior happen such as text editing
 
-    def auto_update(self, *args):  # Calculates marks automatically whenever something is typed
+    def save_data(self):  # Function saves the entered data to a json file in Users/AppData/Roaming/marks
+        data = {
+            "num_semesters": len(self.subjects_marks_dictionary),
+            "semesters": {}
+        }
+
+        for row in self.subject_input_rows_array:  # Retrieve all entered data
+            semester = row["semester_label"]
+            if semester not in data["semesters"]:
+                data["semesters"][semester] = []
+
+            subject = row["subject"].text.strip()
+            mark = row["mark"].text.strip()
+            credit = row["credit"].text.strip()
+
+            data["semesters"][semester].append({
+                "subject": subject,
+                "mark": mark,
+                "credit": credit
+            })
+
+        save_path = os.path.join(self.user_data_dir, "saved_state.json")  # Compatible file path for all platforms
+        try:
+            os.makedirs(self.user_data_dir, exist_ok=True)
+            with open(save_path, "w") as f:
+                json.dump(data, f, indent=2)  # Indent used for readability of json
+        except Exception as e:
+            print(f"Failed to save data: {e}")  # Used in event of any errors, then they will be printed
+
+    def load_data(self):  # Function runs to load all data saved in json
+        try:
+            save_path = os.path.join(self.user_data_dir, "saved_state.json")
+            if not os.path.exists(save_path):
+                return  # If first time launch, json does nto exist, so end execution
+
+            with open(save_path, "r") as f:
+                data = json.load(f)  # Retrieve data from json
+
+            semesters = data.get("semesters", {})
+            for semester_label, subjects in semesters.items():
+                section = self.recreate_semester_section(semester_label,
+                                                         subjects)  # Reload all widgets back using helper function
+                self.root.ids.scroll_container.add_widget(section)
+
+            self.display_marks_to_interface()  # Have calculated wam and gpa on interface when app loads in
+
+            if self.menu:
+                self.root.ids.semester_dropdown.text = f"{len(semesters)}"  # Load in selected value form dropdown when app loads
+
+        except Exception as e:  # In case of an error
+            print(f"Error loading saved data: {e}")
+
+    def auto_update(self, *args):  # Run _do_update automatically whenever something is typed
         Clock.unschedule(self._do_update)
         Clock.schedule_once(self._do_update,
                             0.3)  # Add 0.3-second delay before calculating marks, in case of rapid typing
@@ -214,10 +214,10 @@ class MarksApp(MDApp):  # Class used to define backend logic
         self.save_data()
 
     @staticmethod  # Function does not require self
-    def show_message(message):  # A message is passed which is then displayed by kivy
+    def show_message(message):  # A message is passed which is then displayed by kivy on screen
         toast(message)
 
-    def validate_textbox(self, instance, value, max_val):
+    def validate_textbox(self, instance, value, max_val):  # Validates textbox input value with a max value
         try:
             val = int(value)
             if val > max_val:
@@ -384,7 +384,7 @@ class MarksApp(MDApp):  # Class used to define backend logic
 
         return row_container
 
-    def build_subject_row_layout(self, subject, mark, credit, bin_btn):
+    def build_subject_row_layout(self, subject, mark, credit, bin_btn):  # Build app layout based on mobile or pc
         if self.is_small_view:
             row = MDBoxLayout(orientation="vertical", spacing=dp(4), size_hint_y=None, height=dp(100))
 
