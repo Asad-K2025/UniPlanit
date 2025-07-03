@@ -5,10 +5,12 @@ from kivymd.uix.label import MDLabel
 from kivymd.uix.textfield import MDTextField
 from kivymd.uix.button import MDIconButton
 from kivymd.uix.menu import MDDropdownMenu
+from kivy.uix.scrollview import ScrollView
 from kivy.metrics import dp
 from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.properties import StringProperty
+from kivymd.toast import toast
 import json
 import os
 
@@ -37,7 +39,8 @@ class MarksApp(MDApp):  # Class used to define backend logic
         self.init_dropdown_menu()
         Window.bind(on_resize=self.on_window_resize)  # Call function every time window resizes
         Window.bind(on_key_down=self._on_key_down)  # Define behaviour when certain keys are pressed
-        self.on_window_resize(Window, Window.width, Window.height)  # Call once to initially set according to screen size
+        self.on_window_resize(Window, Window.width,
+                              Window.height)  # Call once to initially set according to screen size
         return self.root
 
     def on_start(self):
@@ -49,17 +52,20 @@ class MarksApp(MDApp):  # Class used to define backend logic
             "semesters": {}
         }
 
-        for semester, rows in self.subjects_marks_dictionary.items():  # Retrieve all entered data
-            data["semesters"][semester] = []
-            for row in rows:
-                subject = row.children[3].text
-                mark = row.children[2].text
-                credit = row.children[1].text
-                data["semesters"][semester].append({
-                    "subject": subject,
-                    "mark": mark,
-                    "credit": credit
-                })
+        for row in self.subject_input_rows_array:  # Retrieve all entered data
+            semester = row["semester_label"]
+            if semester not in data["semesters"]:
+                data["semesters"][semester] = []
+
+            subject = row["subject"].text.strip()
+            mark = row["mark"].text.strip()
+            credit = row["credit"].text.strip()
+
+            data["semesters"][semester].append({
+                "subject": subject,
+                "mark": mark,
+                "credit": credit
+            })
 
         save_path = os.path.join(self.user_data_dir, "saved_state.json")  # Compatible file path for all platforms
         try:
@@ -80,7 +86,8 @@ class MarksApp(MDApp):  # Class used to define backend logic
 
             semesters = data.get("semesters", {})
             for semester_label, subjects in semesters.items():
-                section = self.recreate_semester_section(semester_label, subjects)  # Reload all widgets back using helper function
+                section = self.recreate_semester_section(semester_label,
+                                                         subjects)  # Reload all widgets back using helper function
                 self.root.ids.scroll_container.add_widget(section)
 
             self.display_marks_to_interface()  # Have calculated wam and gpa on interface when app loads in
@@ -93,7 +100,6 @@ class MarksApp(MDApp):  # Class used to define backend logic
 
     def on_window_resize(self, _1, width, _2):  # Adapt marks output box according to screen size (_1 and _2 not used)
         self.is_small_view = (width < 700)  # If small view, track flag as true to make UI changes to input boxes
-
         if width < 600:
             cols = 1
             font_size = 16
@@ -114,7 +120,8 @@ class MarksApp(MDApp):  # Class used to define backend logic
 
         self.refresh_subject_row_layouts()  # Refresh subject rows layout
 
-    def _on_key_down(self, _window, key, _scancode, _codepoint, modifiers):  # Define behaviour for using tab and arrow keys to move across textboxes
+    def _on_key_down(self, _window, key, _scancode, _codepoint,
+                     modifiers):  # Define behaviour for using tab and arrow keys to move across textboxes
         # Find focused field
         field_found = False  # Flag to check if focused field ahs been found
         row, col = 0, 0  # Incase these values are not assigned during loop for any reason
@@ -186,27 +193,52 @@ class MarksApp(MDApp):  # Class used to define backend logic
         return False  # otherwise let default behavior happen such as text editing
 
     def auto_update(self, *args):  # Calculates marks automatically whenever something is typed
-        self.display_marks_to_interface()
-        self.save_data()
+        Clock.unschedule(self._do_update)
+        Clock.schedule_once(self._do_update,
+                            0.3)  # Add 0.3-second delay before calculating marks, in case of rapid typing
 
         for _ in args:  # Args used as function is passed extra 3 parameters by kivy which are not needed
             pass
 
+    def _do_update(self, _dt):  # After 0.3 seconds, this runs and saves data to json as well as calculating marks
+        self.display_marks_to_interface()
+        self.save_data()
+
+    @staticmethod  # Function does not require self
+    def show_message(message):  # A message is passed which is then displayed by kivy
+        toast(message)
+
+    def validate_textbox(self, instance, value, max_val):
+        try:
+            val = int(value)
+            if val > max_val:
+                instance.text = str(max_val)  # or whatever your max is
+                self.show_message(f"Maximum value is {max_val}")
+            elif val < 0:
+                instance.text = "0"
+                self.show_message("Value can't be negative")
+        except ValueError:
+            pass  # User may still be typing, ignore the error
+
     def init_dropdown_menu(self):  # Function creates the menu for the dropdown for selecting semesters with its options
         options = [str(i) for i in range(1, 14 + 1)]  # Add option 1 to 14 in dropdown menu
-        items = [{"text": opt, "viewclass": "OneLineListItem", "on_release": lambda x=opt: self.display_main_section(x)} for opt in options]
+        items = [{"text": opt, "viewclass": "OneLineListItem", "on_release": lambda x=opt: self.display_main_section(x)}
+                 for opt in options]
         self.menu = MDDropdownMenu(caller=self.root.ids.semester_dropdown, items=items)  # Add menu to dropdown
 
-    def display_main_section(self, semesters_in_degree):  # Function displays current_section with subject, mark and credit based on dropdown
-        self.root.ids.semester_dropdown.set_item(semesters_in_degree)  # Set value of dropdown to selected value from menu
+    def display_main_section(self,
+                             semesters_in_degree):  # Function displays current_section with subject, mark and credit based on dropdown
+        self.root.ids.semester_dropdown.set_item(
+            semesters_in_degree)  # Set value of dropdown to selected value from menu
         self.menu.dismiss()  # Close the menu after number was selected
         self.root.ids.scroll_container.clear_widgets()  # Empty out scroll container in case of previous selection
         self.subjects_marks_dictionary.clear()  # Clear dictionary as widgets have been reset after semester selection
-        self.focusable_fields_grid.clear()   # Clear array as entry widget rows have been reset after semester selection
+        self.focusable_fields_grid.clear()  # Clear array as entry widget rows have been reset after semester selection
 
         for semester in range(1, int(semesters_in_degree) + 1):
             section_for_semester = MDBoxLayout(orientation="vertical", spacing=dp(10), size_hint_y=None)
-            section_for_semester.bind(minimum_height=section_for_semester.setter("height"))  # Set height of this layout to its contents height
+            section_for_semester.bind(minimum_height=section_for_semester.setter(
+                "height"))  # Set height of this layout to its contents height
 
             year = int((semester + 1) / 2)  # Calculate Year for the semester
             semester_label = f"Semester {semester} (Year {year})"  # Labels for semester 1 to Last semester
@@ -238,7 +270,8 @@ class MarksApp(MDApp):  # Class used to define backend logic
                 spacing=dp(10),
                 padding=dp(10)
             )  # Section showcasing semester marks
-            self.semester_marks_sections_dictionary[semester_label] = semester_marks_section  # Add section to dict to track
+            self.semester_marks_sections_dictionary[
+                semester_label] = semester_marks_section  # Add section to dict to track
 
             section_for_semester.add_widget(MDLabel(text="[b]Semester marks summary:[/b]",
                                                     theme_text_color="Primary",
@@ -264,7 +297,8 @@ class MarksApp(MDApp):  # Class used to define backend logic
             }
             section_for_semester.add_widget(semester_marks_section)  # Add section to scroll widget for each semester
 
-            self.root.ids.scroll_container.add_widget(section_for_semester)  # Add current_section for each semester to interface
+            self.root.ids.scroll_container.add_widget(
+                section_for_semester)  # Add current_section for each semester to interface
 
     def create_subject_row(self, parent, semester_label):
         # Function creates subject rows when value for semesters selected in dropdown
@@ -291,11 +325,14 @@ class MarksApp(MDApp):  # Class used to define backend logic
                                    text_color_normal=black,
                                    text_color_focus=black)  # 3 textboxes for input
 
-        subject_field.fbind("text", self.auto_update)
-        mark_field.fbind("text", self.auto_update)
-        credit_field.fbind("text", self.auto_update)
+        for field in (subject_field, mark_field, credit_field):
+            field.fbind("text", self.auto_update)
 
-        for field in (subject_field, mark_field, credit_field):  # Append the 3 textboxes to array to track them for allowing tab and arrow keys over textboxes
+        mark_field.fbind("text", lambda instance, val: self.validate_textbox(instance, val, 100))
+        credit_field.fbind("text", lambda instance, val: self.validate_textbox(instance, val, 500))
+
+        for field in (subject_field, mark_field,
+                      credit_field):  # Append the 3 textboxes to array to track them for allowing tab and arrow keys over textboxes
             field.multiline = False  # Ensure tab doesnt insert a tab character
 
         if semester_label in self.rows_count_dictionary.keys():  # Track widgets in row_count dictionary
@@ -313,9 +350,11 @@ class MarksApp(MDApp):  # Class used to define backend logic
 
         bin_btn = MDIconButton(icon="trash-can", theme_text_color="Custom", text_color=(1, 0, 0, 1))
 
-        row_container = self.build_subject_row_layout(subject_field, mark_field, credit_field, bin_btn)  # Pass widgets to store in layout
+        row_container = self.build_subject_row_layout(subject_field, mark_field, credit_field,
+                                                      bin_btn)  # Pass widgets to store in layout
 
-        bin_btn.bind(on_release=lambda _, r=row_container: self.remove_subject_row(semester_label, r, parent))  # Provide button functionality
+        bin_btn.bind(on_release=lambda _, r=row_container: self.remove_subject_row(semester_label, r,
+                                                                                   parent))  # Provide button functionality
 
         # Track components for re-layout later
         self.subject_input_rows_array.append({
@@ -345,7 +384,8 @@ class MarksApp(MDApp):  # Class used to define backend logic
             row.add_widget(top)
             row.add_widget(bottom)
         else:
-            row = MDBoxLayout(spacing=dp(10), size_hint_y=None, height=dp(48))  # Use boxlayout for each row for formatting
+            row = MDBoxLayout(spacing=dp(10), size_hint_y=None,
+                              height=dp(48))  # Use boxlayout for each row for formatting
             row.add_widget(subject)  # Add all widgets in one line for desktop
             row.add_widget(mark)
             row.add_widget(credit)
@@ -360,7 +400,8 @@ class MarksApp(MDApp):  # Class used to define backend logic
             old_container = row_info_dict["container"]  # Layout for a row
 
             if old_container in parent.children:  # Check if row_container is in section for semester
-                index = parent.children.index(old_container) if old_container in parent.children else 0  # Store index to tracker where to place widgets
+                index = parent.children.index(
+                    old_container) if old_container in parent.children else 0  # Store index to tracker where to place widgets
                 parent.remove_widget(old_container)  # If it exists, remove it as new container will be added
 
                 # Detach children to avoid any parent conflicts
@@ -373,8 +414,24 @@ class MarksApp(MDApp):  # Class used to define backend logic
                 new_container = self.build_subject_row_layout(
                     row_info_dict["subject"], row_info_dict["mark"], row_info_dict["credit"], row_info_dict["bin"]
                 )
+
+                # Section binds bin functionality again for new layout mode
+                row_info_dict["bin"].unbind(on_release=None)  # Avoid duplicate bindings
+                row_info_dict["bin"].bind(
+                    on_release=lambda _, r=new_container, sl=row_info_dict['semester_label'], s=parent: self.remove_subject_row(sl, r, s)
+                )
+
                 row_info_dict["container"] = new_container
                 parent.add_widget(new_container, index=index)
+
+                # Update container reference in subjects_marks_dictionary
+                semester = row_info_dict["semester_label"]
+                if semester in self.subjects_marks_dictionary:
+                    rows_list = self.subjects_marks_dictionary[semester]
+                    for i, old_row in enumerate(rows_list):
+                        if old_row == old_container:
+                            rows_list[i] = new_container
+                            break
 
     def add_subject_row(self, semester_label, current_section):  # Function called by add subject button
         row = self.create_subject_row(current_section, semester_label)  # Create a new row using predefined function
@@ -389,9 +446,11 @@ class MarksApp(MDApp):  # Class used to define backend logic
 
     def remove_subject_row(self, semester_label, row, section):  # Functionality of red bin button
 
-        subject = row.children[3]
-        mark = row.children[2]
-        credit = row.children[1]
+        for input_row in self.subject_input_rows_array:
+            mark = input_row["mark"].text.strip()
+            credit = input_row["credit"].text.strip()
+            subject = input_row["subject"].text.strip()
+
         for fields_row in self.focusable_fields_grid:  # Remove widgets from fields_grid_array to ensure correct navigation with arrow keys
             if subject in fields_row and mark in fields_row and credit in fields_row:
                 self.focusable_fields_grid.remove(fields_row)
@@ -400,9 +459,18 @@ class MarksApp(MDApp):  # Class used to define backend logic
         if row in self.subjects_marks_dictionary[semester_label]:  # Remove from dictionary for calculating GPA
             self.subjects_marks_dictionary[semester_label].remove(row)
             section.remove_widget(row)  # Remove widget form interface
-            Clock.schedule_once(lambda dt: section.do_layout())  # Restructure the interface after ensuring widget is removed with a delay
 
-        self.subject_input_rows_array = [  # Remove the rows dictionary from the input row tracking array containing layout information
+            def refresh_layout(_):
+                section.do_layout()
+                if isinstance(section.parent, ScrollView):
+                    section.parent.do_layout()
+                elif section.parent:
+                    section.parent.do_layout()
+
+            Clock.schedule_once(refresh_layout)  # Restructure the interface after ensuring widget is removed with a delay
+
+        self.subject_input_rows_array = [
+            # Remove the rows dictionary from the input row tracking array containing layout information
             row_dictionary for row_dictionary in self.subject_input_rows_array if row_dictionary["container"] != row
         ]
 
@@ -411,7 +479,8 @@ class MarksApp(MDApp):  # Class used to define backend logic
 
         self.auto_update()  # Recalculate marks as a row was deleted, and save in the json file
 
-    def display_marks_to_interface(self):  # Function adds calculated WAMs and GPAs for degree and semesters to interface
+    def display_marks_to_interface(
+            self):  # Function adds calculated WAMs and GPAs for degree and semesters to interface
 
         def calculate_marks(total_credits, total_weight):  # Nested function calculates wam, gpa, grade and returns them
             wam = round(total_weight / total_credits, 2) if total_credits else 0
@@ -444,10 +513,16 @@ class MarksApp(MDApp):  # Class used to define backend logic
         for semester_name, semester_subjects in self.subjects_marks_dictionary.items():  # Loop over each semester
             sem_weight = 0
             sem_credits = 0
-            for subject in semester_subjects:  # Loop over each subject for the semester
+            for row in self.subject_input_rows_array:
+                mark_text = row["mark"].text.strip()
+                credit_text = row["credit"].text.strip()
+
                 try:
-                    mark = float(subject.children[2].text)
-                    credit = float(subject.children[1].text)
+                    if not mark_text or not credit_text or not isinstance(mark_text, int) or\
+                            not isinstance(credit_text, int) or mark_text < 0 or credit_text < 0:
+                        continue  # Skip incomplete rows and negative values to avoid throwing errors
+                    mark = float(mark_text)
+                    credit = float(credit_text)
 
                     degree_total_weight += mark * credit
                     degree_total_credits += credit
@@ -516,6 +591,9 @@ class MarksApp(MDApp):  # Class used to define backend logic
             for field in (subject_field, mark_field, credit_field):
                 field.multiline = False
                 field.fbind("text", self.auto_update)
+
+            mark_field.fbind("text", lambda instance, val: self.validate_textbox(instance, val, 100))
+            credit_field.fbind("text", lambda instance, val: self.validate_textbox(instance, val, 500))
 
             # Add to grid for keyboard navigation
             self.focusable_fields_grid.append([subject_field, mark_field, credit_field])
