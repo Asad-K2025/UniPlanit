@@ -190,6 +190,15 @@ class MarksApp(MDApp):  # Class used to define backend logic
                 self.focusable_fields_grid[0][col].focus = True
             return True
 
+        if key == 13:  # Enter key
+            for row in self.subject_input_rows_array:  # Find which semester the focused field belongs to
+                if any(field.focus for field in (row["subject"], row["mark"], row["credit"])):
+                    semester = row["semester_label"]
+                    parent = row["parent"]
+                    self.add_subject_row(semester, parent)  # Add a row if the semester is focused on
+                    break
+            return True
+
         return False  # otherwise let default behavior happen such as text editing
 
     def auto_update(self, *args):  # Calculates marks automatically whenever something is typed
@@ -234,6 +243,10 @@ class MarksApp(MDApp):  # Class used to define backend logic
         self.root.ids.scroll_container.clear_widgets()  # Empty out scroll container in case of previous selection
         self.subjects_marks_dictionary.clear()  # Clear dictionary as widgets have been reset after semester selection
         self.focusable_fields_grid.clear()  # Clear array as entry widget rows have been reset after semester selection
+        self.semester_labels_dictionary.clear()  # Clear labels stored for semesters
+        self.semester_marks_sections_dictionary.clear()  # Clear dictionary storing sections for semester marks
+        self.subject_input_rows_array.clear()  # Clear the array storing dictionaries for each row
+        self.rows_count_dictionary.clear()  # Clear dictionary storing semester count
 
         for semester in range(1, int(semesters_in_degree) + 1):
             section_for_semester = MDBoxLayout(orientation="vertical", spacing=dp(10), size_hint_y=None)
@@ -299,6 +312,8 @@ class MarksApp(MDApp):  # Class used to define backend logic
 
             self.root.ids.scroll_container.add_widget(
                 section_for_semester)  # Add current_section for each semester to interface
+
+            self.auto_update()  # Ensure to update json with new changes
 
     def create_subject_row(self, parent, semester_label):
         # Function creates subject rows when value for semesters selected in dropdown
@@ -436,13 +451,18 @@ class MarksApp(MDApp):  # Class used to define backend logic
     def add_subject_row(self, semester_label, current_section):  # Function called by add subject button
         row = self.create_subject_row(current_section, semester_label)  # Create a new row using predefined function
 
-        current_section.add_widget(row, index=4)  # Insert row before add button, 4 skips mark labels and add button
+        current_section.add_widget(row, index=4)  # Insert row before add button, index 4 skips mark labels and add button (index 0 starts at bottom in kivy)
 
         self.subjects_marks_dictionary[semester_label].append(row)  # Add row to dictionary as well
         Clock.schedule_once(lambda dt: current_section.do_layout())  # Reformat the current section with new widget
         # Clock used to ensure this executes after the widget has been added
 
         self.auto_update()  # As a row was added, save this in json file
+
+        for row_info in reversed(self.subject_input_rows_array):  # Search for the added row in array
+            if row_info["container"] == row:
+                Clock.schedule_once(lambda dt: setattr(row_info["subject"], "focus", True), 0)  # Set focus to subject field in new added row
+                break
 
     def remove_subject_row(self, semester_label, row, section):  # Functionality of red bin button
 
@@ -520,10 +540,10 @@ class MarksApp(MDApp):  # Class used to define backend logic
                 mark_text = row["mark"].text.strip()
                 credit_text = row["credit"].text.strip()
 
+                if not mark_text or not credit_text:
+                    continue  # Skip incomplete rows and negative values to avoid throwing errors
+
                 try:
-                    if not mark_text or not credit_text or not isinstance(mark_text, int) or\
-                            not isinstance(credit_text, int) or mark_text < 0 or credit_text < 0:
-                        continue  # Skip incomplete rows and negative values to avoid throwing errors
                     mark = float(mark_text)
                     credit = float(credit_text)
 
