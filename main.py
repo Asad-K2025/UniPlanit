@@ -446,13 +446,17 @@ class MarksApp(MDApp):  # Class used to define backend logic
 
     def remove_subject_row(self, semester_label, row, section):  # Functionality of red bin button
 
-        for input_row in self.subject_input_rows_array:
-            mark = input_row["mark"].text.strip()
-            credit = input_row["credit"].text.strip()
-            subject = input_row["subject"].text.strip()
+        subject_widget, mark_widget, credit_widget = 0, 0, 0  # Initialise variables to prevent any undefined variable searches
 
-        for fields_row in self.focusable_fields_grid:  # Remove widgets from fields_grid_array to ensure correct navigation with arrow keys
-            if subject in fields_row and mark in fields_row and credit in fields_row:
+        for input_row in self.subject_input_rows_array:
+            if input_row["container"] == row:
+                mark_widget = input_row["mark"]
+                credit_widget = input_row["credit"]
+                subject_widget = input_row["subject"]
+                break  # Stop searching for more fields and save the correct variables
+
+        for fields_row in self.focusable_fields_grid:  # Remove widgets of row from fields_grid_array to ensure correct navigation with arrow keys
+            if subject_widget in fields_row and mark_widget in fields_row and credit_widget in fields_row:
                 self.focusable_fields_grid.remove(fields_row)
                 break
 
@@ -479,8 +483,7 @@ class MarksApp(MDApp):  # Class used to define backend logic
 
         self.auto_update()  # Recalculate marks as a row was deleted, and save in the json file
 
-    def display_marks_to_interface(
-            self):  # Function adds calculated WAMs and GPAs for degree and semesters to interface
+    def display_marks_to_interface(self):  # Function adds calculated WAMs and GPAs for degree and semesters to interface
 
         def calculate_marks(total_credits, total_weight):  # Nested function calculates wam, gpa, grade and returns them
             wam = round(total_weight / total_credits, 2) if total_credits else 0
@@ -614,6 +617,11 @@ class MarksApp(MDApp):  # Class used to define backend logic
                 "credit": credit_field,
                 "bin": bin_btn
             })
+
+            if semester_label in self.rows_count_dictionary.keys():  # Track widgets in row_count dictionary
+                self.rows_count_dictionary[semester_label] += 1
+            else:
+                self.rows_count_dictionary[semester_label] = 1
 
         # Save to dict for recalculation
         self.subjects_marks_dictionary[semester_label] = rows
