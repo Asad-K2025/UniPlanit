@@ -537,6 +537,9 @@ class MarksApp(MDApp):  # Class used to define backend logic
             sem_weight = 0
             sem_credits = 0
             for row in self.subject_input_rows_array:
+                if row["semester_label"] != semester_name:
+                    continue  # Skip rows from other semesters
+
                 mark_text = row["mark"].text.strip()
                 credit_text = row["credit"].text.strip()
 
