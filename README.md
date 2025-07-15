@@ -1,1 +1,1 @@
-# gpa-calculator
+# UniPlanit
