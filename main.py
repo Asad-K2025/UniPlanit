@@ -155,7 +155,7 @@ class MarksApp(MDApp):  # Class used to define backend logic
             "semesters": {}
         }
 
-        for row in self.subject_input_rows_array:  # Retrieve all entered data
+        for row in self.subject_input_rows_array:  # Retrieve all entered data in textboxes
             semester = row["semester_label"]
             if semester not in data["semesters"]:
                 data["semesters"][semester] = []
@@ -173,8 +173,8 @@ class MarksApp(MDApp):  # Class used to define backend logic
         save_path = os.path.join(self.user_data_dir, "saved_state.json")  # Compatible file path for all platforms
         try:
             os.makedirs(self.user_data_dir, exist_ok=True)
-            with open(save_path, "w") as f:
-                json.dump(data, f, indent=2)  # Indent used for readability of json
+            with open(save_path, "w") as file:
+                json.dump(data, file, indent=2)  # Indent used for readability of json
         except Exception as e:
             print(f"Failed to save data: {e}")  # Used in event of any errors, then they will be printed
 
@@ -182,10 +182,10 @@ class MarksApp(MDApp):  # Class used to define backend logic
         try:
             save_path = os.path.join(self.user_data_dir, "saved_state.json")
             if not os.path.exists(save_path):
-                return  # If first time launch, json does nto exist, so end execution
+                return  # If first time launch, json does not exist, so end execution
 
-            with open(save_path, "r") as f:
-                data = json.load(f)  # Retrieve data from json
+            with open(save_path, "r") as file:
+                data = json.load(file)  # Retrieve data from json
 
             semesters = data.get("semesters", {})
             for semester_label, subjects in semesters.items():
