@@ -1,3 +1,4 @@
+from kivy.uix.screenmanager import ScreenManager
 from kivymd.app import MDApp
 from kivymd.uix.menu import MDDropdownMenu
 from kivymd.uix.screen import MDScreen
@@ -13,23 +14,39 @@ from kivy.clock import Clock
 from kivy.core.window import Window
 
 import calendar
-from datetime import date
+from datetime import date, timedelta, datetime
 
 import os
 import json
 
+# 07 format not working for dates in calendar_data json
 
 calendar_data = {
-    "07-2025": {
-        "14": ["COMP1230 Lab", "Buy books"],
-        "16": ["STAT1042 Exam"]
+    "01-2025": {
+        "7": [
+            {"text": "Math class"}
+        ]
     },
     "08-2025": {
-        "03": ["MATH2020 assignment"],
-        "08": ["PHYS1001 prac"],
-        "14": ["COMP1230 Lab", "Buy books"]
+        "14": [
+            {"text": "COMP1230 Lab", "start_time": "14:00", "end_time": "15:00"},
+            {"text": "Buy books"},
+            {"text": "Call Alex", "start_time": "18:00", "end_time": "18:30"}
+        ],
+        "15": [
+            {"text": "Gym", "start_time": "07:00", "end_time": "08:00"},
+            {"text": "Team meeting", "start_time": "11:00", "end_time": "12:00"}
+        ]
+    },
+    "09-2025": {
+        "03": [
+            {"text": "Doctor Appointment", "start_time": "10:00", "end_time": "11:00"}
+        ]
     }
 }
+
+
+'''Run add task class through function in screen corner'''
 
 
 class TaskPopup(Popup):  # Modal popup for creating or reviewing tasks on a specific date
@@ -63,9 +80,11 @@ class TaskPopup(Popup):  # Modal popup for creating or reviewing tasks on a spec
         text = self.task_input.text.strip()
         if text:
             self.task_list.add_widget(Label(text=f"• {text}", font_size=14, size_hint_y=None, height=20))
-            calendar_data.setdefault(self.month_key, {}).setdefault(self.day, []).append(text)  # Ensure month_key and day exist in calendar_data, otherwise add them in
+            calendar_data.setdefault(self.month_key, {}).setdefault(self.day, []).append(
+                text)  # Ensure month_key and day exist in calendar_data, otherwise add them in
             self.task_input.text = ""
-            MDApp.get_running_app().root.show_month(self.month_key)  # Call show month function to reload interface when a new task is added
+            MDApp.get_running_app().root.show_month(
+                self.month_key)  # Call show month function to reload interface when a new task is added
         MDApp.get_running_app().save_data()  # Save the data to a json file for storage
 
 
@@ -76,7 +95,10 @@ class DayCell(MDBoxLayout):  # Represents a single day box which is clickable
         self.month_key = month_key
 
         # Retrieve task list for this date
-        tasks = calendar_data.get(month_key, {}).get(self.day, [])
+        tasks_dictionaries = calendar_data.get(month_key, {}).get(self.day, [])
+        tasks = []
+        for task in tasks_dictionaries:
+            tasks.append(task['text'])
         has_tasks = bool(tasks)
 
         # Change colour if a task exists for a specific date
@@ -94,14 +116,132 @@ class DayCell(MDBoxLayout):  # Represents a single day box which is clickable
         if len(tasks) > 2:
             self.add_widget(Label(text="…", font_size=12, size_hint_y=None, height=14))
 
-    def on_touch_down(self, touch, *args):  # Function opens task editor popup if a day box/cell is clicked on
+    def on_touch_down(self, touch, *args):  # Function opens week view when a day cell is pressed
         if self.collide_point(*touch.pos):
-            TaskPopup(day=self.day, month_key=self.month_key).open()  # Create instance of TaskPopup
+            MDApp.get_running_app().root.get_screen("month").show_week_view(self.month_key, self.day)
             return True
-        return super().on_touch_down(touch, *args)
+        return super().on_touch_down(touch)
 
 
-class CalendarGrid(GridLayout):  # Defined a month grid container with 7 day structure, padding and all the dates
+class WeekViewScreen(MDScreen):  # Week calendar view class
+    def __init__(self, week_dates, **kwargs):
+        super().__init__(**kwargs)
+        self.week_dates = week_dates
+        self.build_week()
+
+    def build_week(self):
+        layout = MDBoxLayout(orientation="vertical", spacing=10, padding=10)
+
+        # Back button
+        back_btn = MDRaisedButton(
+            text="Month View",
+            size_hint=(None, None),
+            size=(140, 40),
+            on_release=self.back_to_month_view
+        )
+        layout.add_widget(back_btn)
+
+        # Weekday header
+        header = GridLayout(cols=8, size_hint_y=None, height=36)
+        header.add_widget(MDLabel(text="Time", halign="center"))
+        for day in self.week_dates:
+            header.add_widget(MDLabel(text=day.strftime("%a\n%d %b"), markup=True, halign="center"))
+        layout.add_widget(header)
+
+        # Untimed task row
+        untimed_row = GridLayout(cols=8, size_hint_y=None, height=60, spacing=4)
+        untimed_row.add_widget(MDLabel(text="Untimed/All-Day", halign="center", theme_text_color="Secondary"))
+
+        for d in self.week_dates:
+            month_key, day = d.strftime("%m-%Y"), d.strftime("%d")
+            tasks = calendar_data.get(month_key, {}).get(day, [])
+
+            untimed_cell = MDBoxLayout(
+                orientation="vertical",
+                spacing=2,
+                padding=4,
+                md_bg_color=(0.92, 0.92, 0.92, 1)
+            )
+
+            for task in tasks:
+                if not ("start_time" in task and "end_time" in task):
+                    untimed_cell.add_widget(Label(text=f"• {task['text']}", font_size=10))
+                    untimed_cell.md_bg_color = MDApp.get_running_app().theme_cls.primary_light
+
+            untimed_row.add_widget(untimed_cell)
+
+        layout.add_widget(untimed_row)
+
+        # Time grid
+        grid = GridLayout(cols=8, spacing=4, size_hint_y=None)
+        grid.bind(minimum_height=grid.setter("height"))
+
+        # Build 30 min intervals
+        interval_times = []
+        time = datetime.strptime("06:00", "%H:%M")
+        while time <= datetime.strptime("21:30", "%H:%M"):
+            interval_times.append(time.strftime("%H:%M"))
+            time += timedelta(minutes=30)
+
+        # Render time slots
+        for interval in interval_times:
+            show_label = interval.endswith(":00")  # Show only on full hour
+            grid.add_widget(MDLabel(text=interval if show_label else "", halign="center", theme_text_color="Secondary"))
+
+            for d in self.week_dates:
+                month_key, day = d.strftime("%m-%Y"), d.strftime("%d")
+                tasks = calendar_data.get(month_key, {}).get(day, [])
+
+                # Filter tasks active at this interval
+                active_tasks = []
+                current_time = datetime.strptime(interval, "%H:%M")
+
+                for task in tasks:
+                    if "start_time" in task and "end_time" in task:
+                        start = datetime.strptime(task["start_time"], "%H:%M")
+                        end = datetime.strptime(task["end_time"], "%H:%M")
+                        if start <= current_time < end:
+                            active_tasks.append(task)
+
+                # Create cell and split vertically if needed
+                cell = MDBoxLayout(
+                    orientation="horizontal",
+                    spacing=1,
+                    padding=2,
+                    height=30,
+                    size_hint_y=None,
+                    md_bg_color=(0.95, 0.95, 0.95, 1)
+                )
+
+                if active_tasks:
+                    for task in active_tasks:
+                        task_box = MDBoxLayout(
+                            orientation="vertical",
+                            size_hint_x=(1 / len(active_tasks)),
+                            md_bg_color=MDApp.get_running_app().theme_cls.primary_light,
+                            padding=2
+                        )
+                        task_box.add_widget(Label(
+                            text=f"{task['text']}\n{task['start_time']}-{task['end_time']}",
+                            font_size=9
+                        ))
+                        cell.add_widget(task_box)
+
+                grid.add_widget(cell)
+
+        scroll = ScrollView()
+        scroll.add_widget(grid)
+        layout.add_widget(scroll)
+        self.add_widget(layout)
+
+    def back_to_month_view(self, *_):  # Function for returning to month view
+        app = MDApp.get_running_app()
+        month_screen = app.root.get_screen("month")
+        month_screen.show_month(month_screen.current_month_key)
+        app.root.current = "month"
+
+
+class MonthCalendarGrid(GridLayout):  # Defined a month grid container with 7 day structure, padding and all the dates
     def __init__(self, month_key, **kwargs):
         super().__init__(cols=7, spacing=4, padding=6, size_hint_y=None, **kwargs)
         self.bind(minimum_height=self.setter("height"))
@@ -123,7 +263,8 @@ class CalendarGrid(GridLayout):  # Defined a month grid container with 7 day str
             self.add_widget(new_widget)
 
 
-class CalendarScreenDisplay(MDScreen):  # Main interface combining all classes such as calendar grid, side widgets, year dropdown
+class CalendarScreenDisplay(
+    MDScreen):  # Main interface combining all classes such as calendar grid, side widgets, year dropdown
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -154,7 +295,8 @@ class CalendarScreenDisplay(MDScreen):  # Main interface combining all classes s
         )
         year_options = [str(year) for year in self.year_range]
         menu_items = [
-            {"text": year, "on_release": lambda selected_year=year: self.select_year(selected_year)} for year in year_options
+            {"text": year, "on_release": lambda selected_year=year: self.select_year(selected_year)} for year in
+            year_options
         ]
         self.year_menu = MDDropdownMenu(
             caller=self.year_selector,
@@ -226,7 +368,7 @@ class CalendarScreenDisplay(MDScreen):  # Main interface combining all classes s
 
         scroll = ScrollView(do_scroll_x=False, do_scroll_y=True)
 
-        grid = CalendarGrid(month_key=month_key)  # Used for creating an instance of month
+        grid = MonthCalendarGrid(month_key=month_key)  # Used for creating an instance of month
         scroll.add_widget(grid)
 
         self.active_grid_container.add_widget(header)
@@ -237,6 +379,20 @@ class CalendarScreenDisplay(MDScreen):  # Main interface combining all classes s
             self.selected_year = year
             self.year_selector.text = f"Year: {year}"
             self.refresh_month_buttons(year)
+
+    def show_week_view(self, month_key, day):
+        target_date = date(int(month_key.split("-")[1]), int(month_key.split("-")[0]), int(day))
+        week_start = target_date - timedelta(days=target_date.weekday())
+        week_dates = [week_start + timedelta(days=i) for i in range(7)]
+
+        screen_manager = MDApp.get_running_app().root  # ScreenManager instance
+
+        if screen_manager.has_screen("week"):
+            screen_manager.remove_widget(screen_manager.get_screen("week"))
+
+        week_screen = WeekViewScreen(week_dates=week_dates, name="week")
+        screen_manager.add_widget(week_screen)
+        screen_manager.current = "week"
 
     def show_next_month(self):
         if self.current_index < len(self.month_keys) - 1:  # Ensure it isn't at December
@@ -272,13 +428,23 @@ class CalendarScreenDisplay(MDScreen):  # Main interface combining all classes s
 
 
 class CalendarApp(MDApp):  # Class defines the main app
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.month_screen = None
+
     def build(self):
         self.title = "Ultimate Task Calendar"
         self.theme_cls.primary_palette = "Blue"
-        self.theme_cls.theme_style = "Light"  # Main themes of app
+        self.theme_cls.theme_style = "Light"
         Window.clearcolor = (0.98, 0.98, 0.98, 1)
-        self.load_data()  # Load saved data from json
-        return CalendarScreenDisplay()
+        self.load_data()
+
+        screen_manager = ScreenManager()
+        self.month_screen = CalendarScreenDisplay(name="month")
+        screen_manager.add_widget(self.month_screen)
+
+        # WeekViewScreen added dynamically when needed
+        return screen_manager
 
     def save_data(self):  # Function saves the entered data to a json file in Users/AppData/Roaming/calendar
         save_path = os.path.join(self.user_data_dir, "saved_state.json")  # Compatible file path for all platforms
