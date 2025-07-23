@@ -19,32 +19,7 @@ from datetime import date, timedelta, datetime
 import os
 import json
 
-# 07 format not working for dates in calendar_data json
-
-calendar_data = {
-    "01-2025": {
-        "7": [
-            {"text": "Math class"}
-        ]
-    },
-    "08-2025": {
-        "14": [
-            {"text": "COMP1230 Lab", "start_time": "14:00", "end_time": "15:00"},
-            {"text": "Buy books"},
-            {"text": "Call Alex", "start_time": "18:00", "end_time": "18:30"}
-        ],
-        "15": [
-            {"text": "Gym", "start_time": "07:00", "end_time": "08:00"},
-            {"text": "Team meeting", "start_time": "11:00", "end_time": "12:00"}
-        ]
-    },
-    "09-2025": {
-        "03": [
-            {"text": "Doctor Appointment", "start_time": "10:00", "end_time": "11:00"}
-        ]
-    }
-}
-
+calendar_data = {}  # Loads in data from json file
 
 '''Run add task class through function in screen corner'''
 
@@ -95,7 +70,7 @@ class DayCell(MDBoxLayout):  # Represents a single day box which is clickable
         self.month_key = month_key
 
         # Retrieve task list for this date
-        tasks_dictionaries = calendar_data.get(month_key, {}).get(self.day, [])
+        tasks_dictionaries = calendar_data.get(month_key, {}).get(self.day.zfill(2), [])  # zfill for retrieving 07 format
         tasks = []
         for task in tasks_dictionaries:
             tasks.append(task['text'])
