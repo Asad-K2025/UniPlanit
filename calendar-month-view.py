@@ -8,16 +8,23 @@ from kivymd.uix.label import MDLabel
 from kivy.uix.label import Label
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.scrollview import ScrollView
+from kivymd.uix.textfield import MDTextField
 from kivy.uix.popup import Popup
 from kivy.uix.textinput import TextInput
 from kivy.clock import Clock
 from kivy.core.window import Window
 
+# Managing dates
 import calendar
 from datetime import date, timedelta, datetime
 
+# File management
 import os
 import json
+
+# Managing ics link
+import requests
+from ics import Calendar
 
 calendar_data = {}  # Loads in data from json file
 
@@ -107,14 +114,45 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
     def build_week(self):
         layout = MDBoxLayout(orientation="vertical", spacing=10, padding=10)
 
+        # Row with Back button, link input, Save, and Generate buttons
+        top_row = MDBoxLayout(spacing=10, padding=5, size_hint_y=None, height=60)
+
         # Back button
         back_btn = MDRaisedButton(
-            text="Month View",
+            text="Back",
             size_hint=(None, None),
             size=(140, 40),
-            on_release=self.back_to_month_view
+            on_release=self.back_to_month_view,
+            md_bg_color=(0.8, 0, 0.1, 1)  # Red
         )
-        layout.add_widget(back_btn)
+
+        # Text input for iCal link
+        self.link_input = MDTextField(
+            hint_text="Timetable Link",
+            mode="rectangle",
+            size_hint_x=0.1,
+            size_hint_y=None,
+            font_size=12
+        )
+        top_row.add_widget(back_btn)
+        top_row.add_widget(self.link_input)
+
+        # Save button
+        save_btn = MDRaisedButton(
+            text="Save",
+            size_hint=(None, None),
+            on_release=self.save_timetable_link
+        )
+        top_row.add_widget(save_btn)
+
+        # Generate button (non-functional placeholder for now)
+        gen_btn = MDRaisedButton(
+            text="Generate Timetable",
+            size_hint=(None, None),
+        )
+        top_row.add_widget(gen_btn)
+
+        layout.add_widget(top_row)
 
         # Weekday header
         header = GridLayout(cols=8, size_hint_y=None, height=36)
@@ -214,6 +252,15 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
         month_screen = app.root.get_screen("month")
         month_screen.show_month(month_screen.current_month_key)
         app.root.current = "month"
+
+    def save_timetable_link(self, _):
+        link = self.link_input.text.strip()
+        save_path = os.path.join(MDApp.get_running_app().user_data_dir, "settings.json")  # Compatible file path for all platforms
+        try:
+            with open(save_path, "w") as file:
+                json.dump(link, file)
+        except Exception as e:
+            print(f"Failed to save link: {e}")  # Used in event of any errors, then they will be printed
 
 
 class MonthCalendarGrid(GridLayout):  # Defined a month grid container with 7 day structure, padding and all the dates
@@ -440,8 +487,42 @@ class CalendarApp(MDApp):  # Class defines the main app
             with open(save_path, "r") as file:
                 calendar_data = json.load(file)  # Retrieve data from json
 
+            self.import_ics_to_calendar_data()  # Load in uni timetable data
+
         except Exception as e:  # In case of an error
             print(f"Error loading saved data: {e}")
+
+    def import_ics_to_calendar_data(self):
+        global calendar_data
+        settings_path = os.path.join(self.user_data_dir, "settings.json")  # Load link
+        print(settings_path)
+        if not os.path.exists(settings_path):
+            print("No link saved.")
+            return False
+
+        try:
+            with open(settings_path) as file:
+                link = json.load(file)
+            # Fetch and parse
+            calendar_request = Calendar(requests.get(link).text)
+            for event in calendar_request.events:
+                date = event.begin.strftime("%d")
+                month_key = event.begin.strftime("%m-%Y")
+                start = event.begin.strftime("%H:%M")
+                end = event.end.strftime("%H:%M")
+
+                entry = {
+                    "text": event.name,
+                    "start_time": start,
+                    "end_time": end,
+                    "type": "uni"
+                }
+
+                calendar_data.setdefault(month_key, {}).setdefault(date, []).append(entry)
+            return True
+        except Exception as e:
+            print(f"Failed to import: {e}")
+            return False
 
 
 CalendarApp().run()
