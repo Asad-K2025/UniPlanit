@@ -1,16 +1,17 @@
 from kivy.uix.screenmanager import ScreenManager
 from kivymd.app import MDApp
+from kivymd.uix.dialog import MDDialog
 from kivymd.uix.menu import MDDropdownMenu
+from kivymd.uix.pickers import MDDatePicker
 from kivymd.uix.screen import MDScreen
 from kivymd.uix.boxlayout import MDBoxLayout
-from kivymd.uix.button import MDRaisedButton
+from kivymd.uix.button import MDRaisedButton, MDIconButton, MDFlatButton
 from kivymd.uix.label import MDLabel
 from kivy.uix.label import Label
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.scrollview import ScrollView
 from kivymd.uix.textfield import MDTextField
-from kivy.uix.popup import Popup
-from kivy.uix.textinput import TextInput
+from kivymd.uix.selectioncontrol import MDCheckbox
 from kivy.clock import Clock
 from kivy.core.window import Window
 
@@ -27,48 +28,47 @@ import requests
 from ics import Calendar
 
 calendar_data = {}  # Loads in data from json file
+settings_dict = {}  # Saves timetable url link and filter preferences
 
-'''Run add task class through function in screen corner'''
 
+class TaskDialogContent(MDBoxLayout):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.orientation = "vertical"
+        self.spacing = "10dp"
+        self.size_hint_y = None
 
-class TaskPopup(Popup):  # Modal popup for creating or reviewing tasks on a specific date
-    def __init__(self, day, month_key, **kwargs):
-        super().__init__(title=f"Tasks for {day.zfill(2)}-{month_key}", size_hint=(0.8, 0.6), **kwargs)
-        self.day = day
-        self.month_key = month_key
-        self.layout = MDBoxLayout(orientation="vertical", spacing=10, padding=10)
-        self.task_input = TextInput(hint_text="New task...", multiline=False)
+        self.text_input = MDTextField(
+            hint_text="Task Name",
+            mode="rectangle",
+            size_hint_y=None,
+            height=40
+        )
+        self.add_widget(self.text_input)
 
-        self.task_list = MDBoxLayout(orientation="vertical", size_hint_y=None, spacing=5)
-        self.task_list.bind(minimum_height=self.task_list.setter("height"))
+        self.date = datetime.now().date()
 
-        # Populate existing tasks for the selected date
-        tasks = calendar_data.get(month_key, {}).get(self.day, [])
-        for task in tasks:
-            self.task_list.add_widget(Label(text=f"• {task}", font_size=14, size_hint_y=None, height=20))
+        self.date_label = MDLabel(
+            text=self.date.strftime("%A, %d %B %Y"),
+            halign="center",
+            theme_text_color="Primary"
+        )
+        self.add_widget(self.date_label)
 
-        scroll = ScrollView()
-        scroll.add_widget(self.task_list)  # Ensure tasks are scrollable
+        self.date_button = MDRaisedButton(
+            text="Change Date",
+            on_release=self.open_date_picker
+        )
+        self.add_widget(self.date_button)
 
-        add_btn = MDRaisedButton(text="Add Task", on_release=self.add_task)
+    def open_date_picker(self, *args):
+        date_picker = MDDatePicker(on_save=self.on_date_selected)
+        date_picker.open()
 
-        # Append widgets to interface
-        self.layout.add_widget(scroll)
-        self.layout.add_widget(self.task_input)
-        self.layout.add_widget(add_btn)
-        self.content = self.layout
-
-    def add_task(self, *_args):  # Function appends new entry to UI and backend
-        text = self.task_input.text.strip()
-        if text:
-            self.task_list.add_widget(Label(text=f"• {text}", font_size=14, size_hint_y=None, height=20))
-            calendar_data.setdefault(self.month_key, {}).setdefault(self.day, []).append(
-                text)  # Ensure month_key and day exist in calendar_data, otherwise add them in
-            self.task_input.text = ""
-            MDApp.get_running_app().root.show_month(
-                self.month_key)  # Call show month function to reload interface when a new task is added
-        MDApp.get_running_app().save_data()  # Save the data to a json file for storage
-
+    def on_date_selected(self, instance, value, date_range):
+        self.date = value
+        self.date_label.text = value.strftime("%A, %d %B %Y")
+        
 
 class DayCell(MDBoxLayout):  # Represents a single day box which is clickable
     def __init__(self, day, month_key, **kwargs):
@@ -114,10 +114,8 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
     def build_week(self):
         layout = MDBoxLayout(orientation="vertical", spacing=10, padding=10)
 
-        # Row with Back button, link input, Save, and Generate buttons
         top_row = MDBoxLayout(spacing=10, padding=5, size_hint_y=None, height=60)
 
-        # Back button
         back_btn = MDRaisedButton(
             text="Back",
             size_hint=(None, None),
@@ -137,20 +135,39 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
         top_row.add_widget(back_btn)
         top_row.add_widget(self.link_input)
 
-        # Save button
         save_btn = MDRaisedButton(
             text="Save",
             size_hint=(None, None),
-            on_release=self.save_timetable_link
+            on_release=self.save_settings
         )
         top_row.add_widget(save_btn)
 
-        # Generate button (non-functional placeholder for now)
         gen_btn = MDRaisedButton(
             text="Generate Timetable",
             size_hint=(None, None),
         )
         top_row.add_widget(gen_btn)
+
+        self.uni_checkbox = MDCheckbox(active=True)
+        uni_box = MDBoxLayout(orientation="horizontal", spacing=6, size_hint_x=None, width=140)
+        uni_box.add_widget(self.uni_checkbox)
+        uni_box.add_widget(MDLabel(text="Timetable", halign="left", font_style="Caption"))
+        top_row.add_widget(uni_box)
+
+        self.other_checkbox = MDCheckbox(active=True)
+        other_box = MDBoxLayout(orientation="horizontal", spacing=6, size_hint_x=None, width=100)
+        other_box.add_widget(self.other_checkbox)
+        other_box.add_widget(MDLabel(text="Other", halign="left", font_style="Caption"))
+        top_row.add_widget(other_box)
+
+        add_btn = MDIconButton(
+            icon="plus",
+            pos_hint={"center_y": 0.5},
+            on_release=lambda *args: self.show_add_task_dialog(),
+            theme_text_color="Custom",
+            text_color=MDApp.get_running_app().theme_cls.primary_color
+        )
+        top_row.add_widget(add_btn)
 
         layout.add_widget(top_row)
 
@@ -253,12 +270,44 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
         month_screen.show_month(month_screen.current_month_key)
         app.root.current = "month"
 
-    def save_timetable_link(self, _):
+    def show_add_task_dialog(self):
+        content = TaskDialogContent()
+
+        self.dialog = MDDialog(
+            title="Add Task",
+            text="",
+            type="custom",
+            content_cls=content,
+            buttons=[
+                MDRaisedButton(
+                    text="Save",
+                    on_release=self.save_task
+                ),
+                MDFlatButton(
+                    text="Cancel",
+                    on_release=self.dismiss_dialog
+                )
+            ]
+        )
+        self.dialog.open()
+
+    def dismiss_dialog(self, *args):
+        self.dialog.dismiss()
+
+    def save_task(self, *args):
+        task_name = self.task_content.text_input.text
+        task_date = self.task_content.date
+        print(f"Task saved: {task_name} on {task_date}")
+        self.dialog.dismiss()
+
+    def save_settings(self, _):
+        global settings_dict
         link = self.link_input.text.strip()
+        settings_dict['ics_url'] = link
         save_path = os.path.join(MDApp.get_running_app().user_data_dir, "settings.json")  # Compatible file path for all platforms
         try:
             with open(save_path, "w") as file:
-                json.dump(link, file)
+                json.dump(settings_dict, file)
         except Exception as e:
             print(f"Failed to save link: {e}")  # Used in event of any errors, then they will be printed
 
@@ -493,18 +542,18 @@ class CalendarApp(MDApp):  # Class defines the main app
             print(f"Error loading saved data: {e}")
 
     def import_ics_to_calendar_data(self):
+        global settings_dict
         global calendar_data
         settings_path = os.path.join(self.user_data_dir, "settings.json")  # Load link
-        print(settings_path)
         if not os.path.exists(settings_path):
             print("No link saved.")
             return False
 
         try:
             with open(settings_path) as file:
-                link = json.load(file)
+                settings_dict = json.load(file)
             # Fetch and parse
-            calendar_request = Calendar(requests.get(link).text)
+            calendar_request = Calendar(requests.get(settings_dict['ics_url']).text)
             for event in calendar_request.events:
                 date = event.begin.strftime("%d")
                 month_key = event.begin.strftime("%m-%Y")
