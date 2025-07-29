@@ -1,8 +1,9 @@
+from kivy.metrics import dp
 from kivy.uix.screenmanager import ScreenManager
 from kivymd.app import MDApp
 from kivymd.uix.dialog import MDDialog
 from kivymd.uix.menu import MDDropdownMenu
-from kivymd.uix.pickers import MDDatePicker
+from kivymd.uix.pickers import MDDatePicker, MDTimePicker
 from kivymd.uix.screen import MDScreen
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.button import MDRaisedButton, MDIconButton, MDFlatButton
@@ -37,6 +38,7 @@ class TaskDialogContent(MDBoxLayout):
         self.orientation = "vertical"
         self.spacing = "10dp"
         self.size_hint_y = None
+        self.height = "400dp"
 
         self.text_input = MDTextField(
             hint_text="Task Name",
@@ -61,13 +63,65 @@ class TaskDialogContent(MDBoxLayout):
         )
         self.add_widget(self.date_button)
 
-    def open_date_picker(self, *args):
+        self.radio_group = MDBoxLayout(orientation='horizontal', spacing=20, padding=10)
+
+        self.untimed_radio = MDCheckbox(group="task_time", active=True)
+        self.untimed_radio.bind(active=self.toggle_time_fields)
+        self.radio_group.add_widget(self.untimed_radio)
+        self.radio_group.add_widget(MDLabel(text="Untimed / All-Day", theme_text_color="Primary"))
+
+        self.timed_radio = MDCheckbox(group="task_time")
+        self.timed_radio.bind(active=self.toggle_time_fields)
+        self.radio_group.add_widget(self.timed_radio)
+        self.radio_group.add_widget(MDLabel(text="Timed", theme_text_color="Primary"))
+
+        self.add_widget(self.radio_group)
+
+        self.start_time_btn = MDRaisedButton(
+            text="Select Start Time",
+            on_release=self.open_start_time_picker,
+            opacity=0,
+            disabled=True
+        )
+        self.end_time_btn = MDRaisedButton(
+            text="Select End Time",
+            on_release=self.open_end_time_picker,
+            opacity=0,
+            disabled=True
+        )
+        self.add_widget(self.start_time_btn)
+        self.add_widget(self.end_time_btn)
+
+    def toggle_time_fields(self, instance, value):
+        is_timed = self.timed_radio.active
+        self.start_time_btn.disabled = not is_timed
+        self.end_time_btn.disabled = not is_timed
+        self.start_time_btn.opacity = 1 if is_timed else 0
+        self.end_time_btn.opacity = 1 if is_timed else 0
+
+    def open_date_picker(self, *_):
         date_picker = MDDatePicker(on_save=self.on_date_selected)
         date_picker.open()
 
     def on_date_selected(self, instance, value, date_range):
         self.date = value
         self.date_label.text = value.strftime("%A, %d %B %Y")
+
+    def open_start_time_picker(self, *args):
+        picker = MDTimePicker()
+        picker.bind(time=self.set_start_time)
+        picker.open()
+
+    def open_end_time_picker(self, *args):
+        picker = MDTimePicker()
+        picker.bind(time=self.set_end_time)
+        picker.open()
+
+    def set_start_time(self, instance, time_obj):
+        self.start_time_btn.text = f"Start: {time_obj.strftime('%H:%M')}"
+
+    def set_end_time(self, instance, time_obj):
+        self.end_time_btn.text = f"End: {time_obj.strftime('%H:%M')}"
         
 
 class DayCell(MDBoxLayout):  # Represents a single day box which is clickable
@@ -555,7 +609,7 @@ class CalendarApp(MDApp):  # Class defines the main app
             # Fetch and parse
             calendar_request = Calendar(requests.get(settings_dict['ics_url']).text)
             for event in calendar_request.events:
-                date = event.begin.strftime("%d")
+                request_date = event.begin.strftime("%d")
                 month_key = event.begin.strftime("%m-%Y")
                 start = event.begin.strftime("%H:%M")
                 end = event.end.strftime("%H:%M")
@@ -567,7 +621,7 @@ class CalendarApp(MDApp):  # Class defines the main app
                     "type": "uni"
                 }
 
-                calendar_data.setdefault(month_key, {}).setdefault(date, []).append(entry)
+                calendar_data.setdefault(month_key, {}).setdefault(request_date, []).append(entry)
             return True
         except Exception as e:
             print(f"Failed to import: {e}")
