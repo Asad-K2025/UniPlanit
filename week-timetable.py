@@ -1,7 +1,6 @@
 from kivy.uix.screenmanager import ScreenManager
 from kivymd.app import MDApp
 from kivymd.uix.dialog import MDDialog
-from kivymd.uix.menu import MDDropdownMenu
 from kivymd.uix.pickers import MDDatePicker, MDTimePicker
 from kivymd.uix.screen import MDScreen
 from kivymd.uix.boxlayout import MDBoxLayout
@@ -12,13 +11,11 @@ from kivy.uix.gridlayout import GridLayout
 from kivy.uix.scrollview import ScrollView
 from kivymd.uix.textfield import MDTextField
 from kivymd.uix.selectioncontrol import MDCheckbox
-from kivy.clock import Clock
 from kivy.core.window import Window
 from kivymd.toast import toast
 
 # Managing dates
-import calendar
-from datetime import date, timedelta, datetime
+from datetime import timedelta, datetime
 
 # File management
 import os
@@ -30,7 +27,9 @@ from ics import Calendar
 
 # Excel
 from openpyxl import Workbook
-from openpyxl.styles import Font, Border, Side
+from openpyxl.styles import Border, Side, Alignment
+from openpyxl.utils import get_column_letter
+from openpyxl.styles import Font
 
 
 calendar_data = {}
@@ -97,7 +96,7 @@ class TaskDialogContent(MDBoxLayout):
         self.add_widget(self.start_time_btn)
         self.add_widget(self.end_time_btn)
 
-    def toggle_time_fields(self, instance, value):
+    def toggle_time_fields(self, _instance, _val):
         is_timed = self.timed_radio.active
         self.start_time_btn.disabled = not is_timed
         self.end_time_btn.disabled = not is_timed
@@ -109,30 +108,35 @@ class TaskDialogContent(MDBoxLayout):
         date_picker.bind(on_save=self.on_date_selected)
         date_picker.open()
 
-    def on_date_selected(self, instance, value, date_range):
+    def on_date_selected(self, _instance, value, _date_range):
         self.date = value
         self.date_label.text = value.strftime("%A, %d %B %Y")
 
-    def open_start_time_picker(self, *args):
+    def open_start_time_picker(self, *_args):
         picker = MDTimePicker()
         picker.bind(time=self.set_start_time)
         picker.open()
 
-    def open_end_time_picker(self, *args):
+    def open_end_time_picker(self, *_args):
         picker = MDTimePicker()
         picker.bind(time=self.set_end_time)
         picker.open()
 
-    def set_start_time(self, instance, time_obj):
+    def set_start_time(self, _instance, time_obj):
         self.start_time_btn.text = f"Start: {time_obj.strftime('%H:%M')}"
 
-    def set_end_time(self, instance, time_obj):
+    def set_end_time(self, _instance, time_obj):
         self.end_time_btn.text = f"End: {time_obj.strftime('%H:%M')}"
 
 
 class WeekViewScreen(MDScreen):  # Week calendar view class
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.dialog = None
+        self.uni_checkbox = MDCheckbox(active=True)
+        self.other_checkbox = MDCheckbox(active=True)
+        self.link_input = None
+        self.task_content = TaskDialogContent()
         self.week_dates = self.get_current_week_dates()
         self.build_week()
 
@@ -165,13 +169,11 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
         )
         top_row.add_widget(gen_btn)
 
-        self.uni_checkbox = MDCheckbox(active=True)
         uni_box = MDBoxLayout(orientation="horizontal", spacing=6, size_hint_x=None, width=140)
         uni_box.add_widget(self.uni_checkbox)
         uni_box.add_widget(MDLabel(text="Timetable", halign="left", font_style="Caption"))
         top_row.add_widget(uni_box)
 
-        self.other_checkbox = MDCheckbox(active=True)
         other_box = MDBoxLayout(orientation="horizontal", spacing=6, size_hint_x=None, width=100)
         other_box.add_widget(self.other_checkbox)
         other_box.add_widget(MDLabel(text="Other", halign="left", font_style="Caption"))
@@ -302,12 +304,13 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
             for hour in range(start_hour, end_hour + 1)
         ]
 
-        weekdays = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+        weekdays = ["   ", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
         ws.append(weekdays)
 
         for time in time_slots:
             ws.append([time] + [""] * 5)
 
+        merged_cells = {}
         for d in self.week_dates:
             weekday = d.strftime("%A")
             if weekday not in weekdays:
@@ -318,21 +321,47 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
             tasks = calendar_data.get(month_key, {}).get(day, [])
 
             for task in tasks:
+                exit_var = False
                 if "start_time" not in task or "end_time" not in task:
                     continue
 
                 start_time = datetime.strptime(task["start_time"], "%H:%M")
                 end_time = datetime.strptime(task["end_time"], "%H:%M")
-                task_text = task.get("text", "Untitled")
+                task_name = task.get("text", "Untitled")
+                task_location = task.get("location", "Unknown Location")
 
-                for hour in range(start_hour, end_hour + 1):
-                    current_slot = datetime.strptime(f"{hour}:00", "%H:%M")
-                    if start_time <= current_slot < end_time:
-                        current_slot_str = current_slot.strftime("%#I:%M %p")  # Format to match time_slots
-                        row_index = time_slots.index(current_slot_str) + 2
-                        current_value = ws.cell(row=row_index, column=day_column + 1).value
-                        new_value = f"{current_value}\n{task_text}" if current_value else task_text
-                        ws.cell(row=row_index, column=day_column + 1).value = new_value
+                duration_minutes = (end_time - start_time).seconds // 60
+                row_span = duration_minutes // 60
+
+                start_slot_str = start_time.strftime("%#I:%M %p")
+                if start_slot_str not in time_slots:
+                    continue  # Skip if time doesn't match a slot
+
+                start_row = time_slots.index(start_slot_str) + 2  # +2 for header rows
+                end_row = start_row + row_span - 1
+                current_cells = [start_row, end_row]
+
+                col_letter = get_column_letter(day_column + 1)
+
+                if col_letter in merged_cells.keys():
+                    for cell in current_cells:
+                        if cell in merged_cells[col_letter]:
+                            exit_var = True
+                            break  # If cell has been merged, don't change cell value
+                    if exit_var:
+                        continue
+
+                ws[f"{col_letter}{start_row}"].value = task_name + '\n' + task_location
+                ws.merge_cells(f"{col_letter}{start_row}:{col_letter}{end_row}")
+                if col_letter not in merged_cells:
+                    merged_cells[col_letter] = current_cells
+                else:
+                    for cell in current_cells:
+                        merged_cells[col_letter].append(cell)
+                ws[f'{col_letter}{start_row}'].alignment = Alignment(
+                    vertical='top',
+                    wrap_text=True
+                )
 
         for row in ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=1, max_col=ws.max_column):
             for cell in row:
@@ -341,7 +370,7 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
 
         ws.column_dimensions['A'].width = 10
 
-        for i in range(66, 70 + 1):  # ASCII values for 'a' to 'z' are 97 to 122
+        for i in range(66, 70 + 1):  # ASCII values
             ws.column_dimensions[chr(i)].width = 20
 
         # Save file
@@ -358,7 +387,6 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
         return [monday + timedelta(days=i) for i in range(7)]
 
     def show_add_task_dialog(self):
-        self.task_content = TaskDialogContent()
 
         self.dialog = MDDialog(
             title="Add Task",
@@ -378,7 +406,7 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
         )
         self.dialog.open()
 
-    def dismiss_dialog(self, *args):
+    def dismiss_dialog(self, *_args):
         self.dialog.dismiss()
 
     def save_settings(self, _):
@@ -392,7 +420,7 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
         except Exception as e:
             print(f"Failed to save link: {e}")  # Used in event of any errors, then they will be printed
 
-    def save_task(self, *args):
+    def save_task(self, *_args):
         global calendar_data
 
         task_name = self.task_content.text_input.text.strip()
@@ -432,6 +460,7 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
 class WeekTimetableApp(MDApp):  # Class defines the main app
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.week_screen = WeekViewScreen(name="week")
 
     def build(self):
         self.title = "Week Timetable"
@@ -441,7 +470,6 @@ class WeekTimetableApp(MDApp):  # Class defines the main app
         self.load_data()
 
         screen_manager = ScreenManager()
-        self.week_screen = WeekViewScreen(name="week")
         screen_manager.add_widget(self.week_screen)
 
         return screen_manager
@@ -503,6 +531,7 @@ class WeekTimetableApp(MDApp):  # Class defines the main app
                     "text": event.name,
                     "start_time": start,
                     "end_time": end,
+                    "location": event.location,
                     "type": "uni"
                 }
 
