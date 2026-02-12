@@ -132,16 +132,20 @@ class TaskDialogContent(MDBoxLayout):
 class WeekViewScreen(MDScreen):  # Week calendar view class
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.dialog = None
+        self.dialog = None 
         self.uni_checkbox = MDCheckbox(active=True)
         self.other_checkbox = MDCheckbox(active=True)
         self.link_input = None
         self.task_content = TaskDialogContent()
         self.week_dates = self.get_current_week_dates()
-        self.build_week()
+        self.current_monday = self.get_current_week_dates()[0]
+        self.static_layout = MDBoxLayout(orientation="vertical", spacing=10, padding=10)  # stores static content like buttons
+        self.calendar_dynamic_container = MDBoxLayout(orientation="vertical")
+        self.build_week_first_run()
 
-    def build_week(self):
-        layout = MDBoxLayout(orientation="vertical", spacing=10, padding=10)
+    def build_week_first_run(self):
+        # builds header once avoid rerunning when rendering calendar
+        static_layout = self.static_layout
 
         top_row = MDBoxLayout(spacing=10, padding=5, size_hint_y=None, height=60)
 
@@ -188,14 +192,38 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
         )
         top_row.add_widget(add_btn)
 
-        layout.add_widget(top_row)
+        prev_btn = MDIconButton(
+            icon="chevron-left",
+            on_release=self.previous_week,
+            theme_text_color="Custom",
+            text_color=MDApp.get_running_app().theme_cls.primary_color
+        )
+        top_row.add_widget(prev_btn)
+
+        next_btn = MDIconButton(
+            icon="chevron-right",
+            on_release=self.next_week,
+            theme_text_color="Custom",
+            text_color=MDApp.get_running_app().theme_cls.primary_color
+        )
+        top_row.add_widget(next_btn)
+
+        static_layout.add_widget(top_row)
+        static_layout.add_widget(self.calendar_dynamic_container)  # add
+        self.add_widget(static_layout)
+
+        self.build_week()
+
+    def build_week(self):  # builds cells and tasks and takes care of collisions
+        self.calendar_dynamic_container.clear_widgets()
+        calendar_dynamic_container = self.calendar_dynamic_container
 
         # Weekday header
         header = GridLayout(cols=8, size_hint_y=None, height=36)
         header.add_widget(MDLabel(text="Time", halign="center"))
         for day in self.week_dates:
             header.add_widget(MDLabel(text=day.strftime("%a\n%d %b"), markup=True, halign="center"))
-        layout.add_widget(header)
+        calendar_dynamic_container.add_widget(header)
 
         # Untimed task row
         untimed_row = GridLayout(cols=8, size_hint_y=None, height=60, spacing=4)
@@ -219,7 +247,7 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
 
             untimed_row.add_widget(untimed_cell)
 
-        layout.add_widget(untimed_row)
+        calendar_dynamic_container.add_widget(untimed_row)
 
         # Time grid
         grid = GridLayout(cols=8, spacing=4, size_hint_y=None)
@@ -280,13 +308,27 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
 
         scroll = ScrollView()
         scroll.add_widget(grid)
-        layout.add_widget(scroll)
-        self.add_widget(layout)
+        calendar_dynamic_container.add_widget(scroll)
+
+    def previous_week(self, *_):
+        self.current_monday -= timedelta(days=7)
+        self.update_week()
+
+    def next_week(self, *_):
+        self.current_monday += timedelta(days=7)
+        self.update_week()
+
+    def update_week(self):
+        self.week_dates = [
+            self.current_monday + timedelta(days=i)
+            for i in range(7)
+        ]
+        self.build_week()
 
     def generate_excel(self, _):
         wb = Workbook()
         ws = wb.active
-        ws.title = "Week Schedule"
+        ws.title = "Week Schedule"  # Change static_layout to horizontal for easier pdf printing
 
         # Styling
         font_style = Font(size=12)
@@ -382,7 +424,7 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
 
     def get_current_week_dates(self):
         # today = datetime.now()
-        today = datetime(2025, 8, 7, 10, 40, 3, 843667)
+        today = datetime(2026, 3, 3, 10, 40, 3, 843667)
         monday = today - timedelta(days=today.weekday())  # Monday of current week
         return [monday + timedelta(days=i) for i in range(7)]
 
@@ -460,6 +502,7 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
 class WeekTimetableApp(MDApp):  # Class defines the main app
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.load_data()
         self.week_screen = WeekViewScreen(name="week")
 
     def build(self):
@@ -467,7 +510,6 @@ class WeekTimetableApp(MDApp):  # Class defines the main app
         self.theme_cls.primary_palette = "Blue"
         self.theme_cls.theme_style = "Light"
         Window.clearcolor = (0.98, 0.98, 0.98, 1)
-        self.load_data()
 
         screen_manager = ScreenManager()
         screen_manager.add_widget(self.week_screen)

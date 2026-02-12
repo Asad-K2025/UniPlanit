@@ -66,7 +66,7 @@ class MarksApp(MDApp):  # Class used to define backend logic
         self.root.degree_marks_text_font_size = f'{font_size}sp'  # Change font size at bottom of screen based on screen size
         self.root.degree_marks_title_font_size = f'{font_size + 4}sp'  # Change font size at bottom of screen based on screen size
 
-        self.refresh_subject_row_layouts()  # Refresh subject rows layout
+        self.refresh_subject_row_layouts()  # Refresh subject rows static_layout
 
     def _on_key_down(self, _window, key, _scancode, _codepoint,
                      modifiers):  # Define behaviour for using tab and arrow keys to move across textboxes
@@ -251,7 +251,7 @@ class MarksApp(MDApp):  # Class used to define backend logic
         for semester in range(1, int(semesters_in_degree) + 1):
             section_for_semester = MDBoxLayout(orientation="vertical", spacing=dp(10), size_hint_y=None)
             section_for_semester.bind(minimum_height=section_for_semester.setter(
-                "height"))  # Set height of this layout to its contents height
+                "height"))  # Set height of this static_layout to its contents height
 
             year = int((semester + 1) / 2)  # Calculate Year for the semester
             semester_label = f"Semester {semester} (Year {year})"  # Labels for semester 1 to Last semester
@@ -259,7 +259,7 @@ class MarksApp(MDApp):  # Class used to define backend logic
             section_for_semester.add_widget(MDLabel(height=dp(1)))  # Add gap between semester title and widgets
 
             rows = []
-            for _ in range(4):  # Creates 4 subjects for each semester in a box layout representing each semester
+            for _ in range(4):  # Creates 4 subjects for each semester in a box static_layout representing each semester
                 row = self.create_subject_row(section_for_semester, semester_label)
                 section_for_semester.add_widget(row)
                 rows.append(row)
@@ -297,7 +297,7 @@ class MarksApp(MDApp):  # Class used to define backend logic
             gpa7_sem_label = MDLabel(text="[b]GPA (7-point scale): 0.0[/b]", markup=True,
                                      height=dp(10), size_hint_y=None, text_size=(None, None))
 
-            # Add them to the layout
+            # Add them to the static_layout
             semester_marks_section.add_widget(wam_sem_label)
             semester_marks_section.add_widget(gpa4_sem_label)
             semester_marks_section.add_widget(gpa7_sem_label)
@@ -366,12 +366,12 @@ class MarksApp(MDApp):  # Class used to define backend logic
         bin_btn = MDIconButton(icon="trash-can", theme_text_color="Custom", text_color=(1, 0, 0, 1))
 
         row_container = self.build_subject_row_layout(subject_field, mark_field, credit_field,
-                                                      bin_btn)  # Pass widgets to store in layout
+                                                      bin_btn)  # Pass widgets to store in static_layout
 
         bin_btn.bind(on_release=lambda _, r=row_container: self.remove_subject_row(semester_label, r,
                                                                                    parent))  # Provide button functionality
 
-        # Track components for re-layout later
+        # Track components for re-static_layout later
         self.subject_input_rows_array.append({
             "container": row_container,
             "parent": parent,
@@ -384,7 +384,7 @@ class MarksApp(MDApp):  # Class used to define backend logic
 
         return row_container
 
-    def build_subject_row_layout(self, subject, mark, credit, bin_btn):  # Build app layout based on mobile or pc
+    def build_subject_row_layout(self, subject, mark, credit, bin_btn):  # Build app static_layout based on mobile or pc
         if self.is_small_view:
             row = MDBoxLayout(orientation="vertical", spacing=dp(4), size_hint_y=None, height=dp(100))
 
@@ -425,12 +425,12 @@ class MarksApp(MDApp):  # Class used to define backend logic
                 row_info_dict["credit"].parent.remove_widget(row_info_dict["credit"])
                 row_info_dict["bin"].parent.remove_widget(row_info_dict["bin"])
 
-                # Rebuild with new layout mode
+                # Rebuild with new static_layout mode
                 new_container = self.build_subject_row_layout(
                     row_info_dict["subject"], row_info_dict["mark"], row_info_dict["credit"], row_info_dict["bin"]
                 )
 
-                # Section binds bin functionality again for new layout mode
+                # Section binds bin functionality again for new static_layout mode
                 row_info_dict["bin"].unbind(on_release=None)  # Avoid duplicate bindings
                 row_info_dict["bin"].bind(
                     on_release=lambda _, r=new_container, sl=row_info_dict['semester_label'], s=parent: self.remove_subject_row(sl, r, s)
@@ -494,7 +494,7 @@ class MarksApp(MDApp):  # Class used to define backend logic
             Clock.schedule_once(refresh_layout)  # Restructure the interface after ensuring widget is removed with a delay
 
         self.subject_input_rows_array = [
-            # Remove the rows dictionary from the input row tracking array containing layout information
+            # Remove the rows dictionary from the input row tracking array containing static_layout information
             row_dictionary for row_dictionary in self.subject_input_rows_array if row_dictionary["container"] != row
         ]
 
