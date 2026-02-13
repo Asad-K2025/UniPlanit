@@ -30,7 +30,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Border, Side, Alignment
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import Font
-
+from openpyxl.styles import PatternFill
 
 calendar_data = {}
 settings_dict = {}
@@ -255,8 +255,8 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
 
         # Build 30 min intervals
         interval_times = []
-        time = datetime.strptime("06:00", "%H:%M")
-        while time <= datetime.strptime("21:30", "%H:%M"):
+        time = datetime.strptime("08:00", "%H:%M")
+        while time <= datetime.strptime("19:30", "%H:%M"):
             interval_times.append(time.strftime("%H:%M"))
             time += timedelta(minutes=30)
 
@@ -328,9 +328,11 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
     def generate_excel(self, _):
         wb = Workbook()
         ws = wb.active
-        ws.title = "Week Schedule"  # Change static_layout to horizontal for easier pdf printing
+        ws.title = "Week Schedule"
+        ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
+        ws.page_setup.fitToWidth = 1
 
-        # Styling
+        # styling
         font_style = Font(size=12)
         border_style = Border(
             left=Side(style='thin', color='000000'),
@@ -339,8 +341,8 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
             bottom=Side(style='thin', color='000000')
         )
 
-        start_hour = 6
-        end_hour = 22
+        start_hour = 8
+        end_hour = 20
         time_slots = [
             datetime.strptime(f"{hour}:00", "%H:%M").strftime("%#I:%M %p")  # 12-hour format 11:00 AM
             for hour in range(start_hour, end_hour + 1)
@@ -350,19 +352,28 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
         ws.append(weekdays)
 
         for time in time_slots:
-            ws.append([time] + [""] * 5)
+            ws.append([time])
 
         merged_cells = {}
-        for d in self.week_dates:
+        day_column_map = {  # used to handle collisions
+            "Monday": 1,
+            "Tuesday": 2,
+            "Wednesday": 3,
+            "Thursday": 4,
+            "Friday": 5
+        }
+        for d in self.week_dates:  # handle each day in the week
             weekday = d.strftime("%A")
             if weekday not in weekdays:
                 continue  # Skip weekends or unexpected dates
 
-            day_column = weekdays.index(weekday)
+            day_column = day_column_map[weekday]
             month_key, day = d.strftime("%m-%Y"), d.strftime("%d")
             tasks = calendar_data.get(month_key, {}).get(day, [])
 
-            for task in tasks:
+            day_tasks_collision_handler = {}
+
+            for task in tasks:  # handle tasks for each day
                 exit_var = False
                 if "start_time" not in task or "end_time" not in task:
                     continue
@@ -371,6 +382,24 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
                 end_time = datetime.strptime(task["end_time"], "%H:%M")
                 task_name = task.get("text", "Untitled")
                 task_location = task.get("location", "Unknown Location")
+
+                print(task_name, day_column)
+
+                current_time = start_time
+                while current_time < end_time:
+                    if current_time not in day_tasks_collision_handler:
+                        day_tasks_collision_handler[current_time] = task_name
+                        current_time += timedelta(hours=1)
+                    else:
+                        # handle the collision
+                        print("collision for ", task_name)
+                        ws.insert_cols(day_column + 2)  # index + 1, then add 1 more to insert column on right
+                        # update the day column map
+                        for day in day_column_map:
+                            if day_column_map[day] >= day_column + 1:
+                                day_column_map[day] += 1
+                        day_column = day_column_map[weekday] + 1
+                        break
 
                 duration_minutes = (end_time - start_time).seconds // 60
                 row_span = duration_minutes // 60
@@ -394,6 +423,15 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
                         continue
 
                 ws[f"{col_letter}{start_row}"].value = task_name + '\n' + task_location
+
+                task_type = task_name.split()[-1].lower()
+                if task_type in ["lecture", "seminar"]:
+                    fill = PatternFill(start_color="D8E4BC", end_color="D8E4BC", fill_type="solid")  # light green
+                else:
+                    fill = PatternFill(start_color="E6B8B7", end_color="E6B8B7", fill_type="solid")  # light red
+
+                ws[f"{col_letter}{start_row}"].fill = fill
+
                 ws.merge_cells(f"{col_letter}{start_row}:{col_letter}{end_row}")
                 if col_letter not in merged_cells:
                     merged_cells[col_letter] = current_cells
@@ -414,6 +452,27 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
 
         for i in range(66, 70 + 1):  # ASCII values
             ws.column_dimensions[chr(i)].width = 20
+
+        for row in range(2, ws.max_row + 1):  # skips header column
+
+            max_height = 15  # default Excel height
+
+            for col in range(2, ws.max_column + 1):
+                cell = ws.cell(row=row, column=col)
+
+                if cell.value:
+                    text_length = len(str(cell.value))
+
+                    chars_per_line = 22  # rough guess
+                    lines = (text_length // chars_per_line) + 1
+
+                    estimated_height = lines * 18  # 18 = height per line
+
+                    if estimated_height > max_height:
+                        max_height = estimated_height
+
+            if max_height > 15:
+                ws.row_dimensions[row].height = max_height
 
         # Save file
         try:
