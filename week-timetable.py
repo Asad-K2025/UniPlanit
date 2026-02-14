@@ -363,6 +363,7 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
             "Friday": 5
         }
         for d in self.week_dates:  # handle each day in the week
+            timetable_clash = False
             weekday = d.strftime("%A")
             if weekday not in weekdays:
                 continue  # Skip weekends or unexpected dates
@@ -372,6 +373,7 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
             tasks = calendar_data.get(month_key, {}).get(day, [])
 
             day_tasks_collision_handler = {}
+            clashed_tasks = set()  # using set to auto handle duplicate entries
 
             for task in tasks:  # handle tasks for each day
                 exit_var = False
@@ -383,23 +385,31 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
                 task_name = task.get("text", "Untitled")
                 task_location = task.get("location", "Unknown Location")
 
-                print(task_name, day_column)
-
                 current_time = start_time
                 while current_time < end_time:
-                    if current_time not in day_tasks_collision_handler:
-                        day_tasks_collision_handler[current_time] = task_name
+                    task_hour = current_time.hour
+                    if task_hour not in day_tasks_collision_handler:
+                        day_tasks_collision_handler[task_hour] = [task_name]
                         current_time += timedelta(hours=1)
                     else:
-                        # handle the collision
-                        print("collision for ", task_name)
+                        day_tasks_collision_handler[task_hour].append(task_name)
+                        current_time += timedelta(hours=1)
+                        for clashing_task in day_tasks_collision_handler[task_hour]:
+                            clashed_tasks.add(clashing_task)
+
+                        if timetable_clash:  # collision already handled, just add times into dictionary
+                            continue
+
+                        # collision not handled yet
                         ws.insert_cols(day_column + 2)  # index + 1, then add 1 more to insert column on right
+
                         # update the day column map
                         for day in day_column_map:
                             if day_column_map[day] >= day_column + 1:
                                 day_column_map[day] += 1
+
                         day_column = day_column_map[weekday] + 1
-                        break
+                        timetable_clash = True
 
                 duration_minutes = (end_time - start_time).seconds // 60
                 row_span = duration_minutes // 60
@@ -412,7 +422,7 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
                 end_row = start_row + row_span - 1
                 current_cells = [start_row, end_row]
 
-                col_letter = get_column_letter(day_column + 1)
+                col_letter = get_column_letter(day_column + 1)  # +1 as Excel col indexes start at 1, eg A = 1
 
                 if col_letter in merged_cells.keys():
                     for cell in current_cells:
@@ -442,6 +452,29 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
                     vertical='top',
                     wrap_text=True
                 )
+
+            # to manage timetable clashes, create another column for clashing tasks and merge all other cells in columns
+            if timetable_clash:
+                no_merge_hours = set()
+
+                for hour, tasks in day_tasks_collision_handler.items():
+                    for task_name in tasks:
+                        if task_name in clashed_tasks:
+                            no_merge_hours.add(hour)
+
+                for row in range(1, ws.max_row + 1):
+                    if row + 6 in no_merge_hours:
+                        continue  # clash so don't merge. row + 6 used to indicate time indices in Excel (starts at 8)
+
+                    start_col_num = day_column_map[weekday] + 1
+                    end_col_num = day_column + 1
+                    start_col = get_column_letter(start_col_num)
+                    end_col = get_column_letter(end_col_num)
+
+                    if self.is_cell_merged(ws, row, start_col_num) or self.is_cell_merged(ws, row, end_col_num):
+                        continue
+
+                    ws.merge_cells(f"{start_col}{row}:{end_col}{row}")
 
         for row in ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=1, max_col=ws.max_column):
             for cell in row:
@@ -480,6 +513,16 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
             MDApp.get_running_app().show_message('Excel timetable generated')
         except Exception as e:
             MDApp.get_running_app().show_message(str(e))
+
+    def is_cell_merged(self, ws, row, col):
+        for merged_range in ws.merged_cells.ranges:
+            if (
+                    merged_range.min_row <= row <= merged_range.max_row
+                    and
+                    merged_range.min_col <= col <= merged_range.max_col
+            ):
+                return True
+        return False
 
     def get_current_week_dates(self):
         # today = datetime.now()
