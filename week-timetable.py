@@ -31,6 +31,7 @@ from openpyxl.styles import Border, Side, Alignment
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import Font
 from openpyxl.styles import PatternFill
+from copy import copy
 
 calendar_data = {}
 settings_dict = {}
@@ -383,7 +384,7 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
                 start_time = datetime.strptime(task["start_time"], "%H:%M")
                 end_time = datetime.strptime(task["end_time"], "%H:%M")
                 task_name = task.get("text", "Untitled")
-                task_location = task.get("location", "Unknown Location")
+                task_location = task.get("location")
 
                 current_time = start_time
                 while current_time < end_time:
@@ -455,7 +456,7 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
 
             # to manage timetable clashes, create another column for clashing tasks and merge all other cells in columns
             if timetable_clash:
-                no_merge_hours = set()
+                no_merge_hours = set()  # used to store hours when clashes occur
 
                 for hour, tasks in day_tasks_collision_handler.items():
                     for task_name in tasks:
@@ -472,6 +473,32 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
                     end_col = get_column_letter(end_col_num)
 
                     if self.is_cell_merged(ws, row, start_col_num) or self.is_cell_merged(ws, row, end_col_num):
+                        # handle cases where horizontal merge is needed but vertical merge exists
+                        for merged_range in list(ws.merged_cells.ranges):
+                            if (
+                                    merged_range.min_col == merged_range.max_col
+                                    and
+                                    merged_range.min_row == row
+                            ):
+                                if start_col_num <= merged_range.min_col <= end_col_num:
+                                    # found the entire vertical merge range affecting this row
+                                    min_row = merged_range.min_row
+                                    max_row = merged_range.max_row
+                                    # if top left cell in new range empty, first move data and styling there
+                                    if ws[f'{start_col}{min_row}'].value is None or ws[f'{start_col}{min_row}'].value == '':
+                                        target = ws[f'{start_col}{min_row}']
+                                        source = ws[f'{end_col}{min_row}']
+
+                                        target.value = source.value
+                                        target.alignment = copy(source.alignment)
+                                        target.fill = copy(source.fill)
+                                        target.font = copy(source.font)
+                                        target.border = copy(source.border)
+
+                                    # unmerge existing vertical merge first to avoid Excel file corruption
+                                    ws.unmerge_cells(str(merged_range))
+                                    ws.merge_cells(f"{start_col}{min_row}:{end_col}{max_row}")
+                                    break
                         continue
 
                     ws.merge_cells(f"{start_col}{row}:{end_col}{row}")
