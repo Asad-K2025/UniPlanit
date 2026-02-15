@@ -33,6 +33,8 @@ from openpyxl.styles import Font
 from openpyxl.styles import PatternFill
 from copy import copy
 
+import re
+
 calendar_data = {}
 settings_dict = {}
 
@@ -552,10 +554,9 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
         return False
 
     def get_current_week_dates(self):
-        # today = datetime.now()
-        today = datetime(2026, 3, 3, 10, 40, 3, 843667)
-        monday = today - timedelta(days=today.weekday())  # Monday of current week
-        return [monday + timedelta(days=i) for i in range(7)]
+        today = datetime.now()
+        monday_current_week = today - timedelta(days=today.weekday())
+        return [monday_current_week + timedelta(days=i) for i in range(7)]
 
     def show_add_task_dialog(self):
 
@@ -702,7 +703,7 @@ class WeekTimetableApp(MDApp):  # Class defines the main app
                     "text": event.name,
                     "start_time": start,
                     "end_time": end,
-                    "location": event.location,
+                    "location": self.clean_location(event.location),
                     "type": "uni"
                 }
 
@@ -711,6 +712,20 @@ class WeekTimetableApp(MDApp):  # Class defines the main app
         except Exception as e:
             print(f"Failed to import: {e}")
             return False
+
+    def clean_location(self, location):
+        if not location:
+            return "No location"
+
+        if location.strip() == "-":
+            return "(Online)"
+
+        parts = location.split(".")
+        cleaned_location = f"{parts[0]} {parts[-1]}"
+
+        cleaned_location = re.sub(r"\([^)]*\)", "", cleaned_location)  # remove date ranges in brackets
+
+        return cleaned_location.strip().rstrip(",")
 
     @staticmethod
     def show_message(message):  # A message is passed which is then displayed by kivy on screen
