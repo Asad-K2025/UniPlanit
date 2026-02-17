@@ -28,7 +28,6 @@ UniPlanit is a Python based scheduling system that processes university timetabl
 
 ## How to Run
 
-Ins
 ```bash
 pip install -r requirements.txt
 python3 week-timetable.py
