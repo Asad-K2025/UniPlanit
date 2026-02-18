@@ -164,6 +164,8 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
         )
         top_row.add_widget(self.link_input)
 
+        self.link_input.text = settings_dict.get("ics_url", "")
+
         save_btn = MDRaisedButton(
             text="Save",
             size_hint=(None, None),
