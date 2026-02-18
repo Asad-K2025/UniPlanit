@@ -31,6 +31,8 @@ from openpyxl.styles import Border, Side, Alignment
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import Font
 from openpyxl.styles import PatternFill
+from openpyxl.cell.rich_text import CellRichText, TextBlock
+from openpyxl.cell.text import InlineFont
 from copy import copy
 
 import re
@@ -356,6 +358,8 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
 
         for time in time_slots:
             ws.append([time])
+            current_row = ws.max_row  # max_row gets the last row in sheet
+            ws.cell(row=current_row, column=1).alignment = Alignment(vertical="top")
 
         merged_cells = {}
         day_column_map = {  # used to handle collisions
@@ -435,7 +439,14 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
                     if exit_var:
                         continue
 
-                ws[f"{col_letter}{start_row}"].value = task_name + '\n' + task_location
+                # styles used for rich text
+                normal_font = InlineFont(sz=12)
+                bold_font = InlineFont(b=True, sz=12)
+
+                ws[f"{col_letter}{start_row}"].value = CellRichText(
+                                        TextBlock(bold_font, task_name),
+                                        TextBlock(normal_font, f"\n{task_location}")
+                                    )
 
                 task_type = task_name.split()[-1].lower()
                 if task_type in ["lecture", "seminar"]:
@@ -507,7 +518,8 @@ class WeekViewScreen(MDScreen):  # Week calendar view class
 
         for row in ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=1, max_col=ws.max_column):
             for cell in row:
-                cell.font = font_style
+                if not isinstance(cell.value, CellRichText):  # don't overwrite cells with bold text
+                    cell.font = font_style
                 cell.border = border_style
 
         ws.column_dimensions['A'].width = 10
